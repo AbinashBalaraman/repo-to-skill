@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Re-run the suite here rather than trusting that CI passed on the tagged commit.
+  # A tag can be pushed to any commit, including one CI never saw.
+  test:
+    name: test before release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - run: python -m unittest discover -s tests
+      - run: |
+          python -m r2s convert \
+            fixtures/agent-system/youtube-automation/expected/inventory.json --all
+
+  build:
+    name: build distribution
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade build
+      - run: python -m build
+
+      - name: Verify the built version matches the tag
+        run: |
+          python - <<'PY'
+          import glob, os, sys, zipfile
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          expected = tag[1:] if tag.startswith("v") else tag
+
+          wheels = glob.glob("dist/*.whl")
+          if len(wheels) != 1:
+              sys.exit(f"expected exactly one wheel, found {wheels}")
+
+          with zipfile.ZipFile(wheels[0]) as archive:
+              metadata = next(n for n in archive.namelist() if n.endswith("METADATA"))
+              version = next(
+                  line.split(":", 1)[1].strip()
+                  for line in archive.read(metadata).decode().splitlines()
+                  if line.startswith("Version:")
+              )
+
+          if version != expected:
+              sys.exit(f"tag {tag} does not match built version {version}")
+          print(f"tag {tag} matches built version {version}")
+          PY
+
+      - name: The wheel contains its runtime data
+        run: |
+          python - <<'PY'
+          import glob, sys, zipfile
+
+          with zipfile.ZipFile(glob.glob("dist/*.whl")[0]) as archive:
+              names = set(archive.namelist())
+
+          required = [
+              "r2s/data/capabilities.json",
+              "r2s/data/catalog/providers.json",
+              "r2s/data/catalog/effects.json",
+              "r2s/data/catalog/stand-ins/index.json",
+              "r2s/py.typed",
+          ]
+          missing = [r for r in required if r not in names]
+          if missing:
+              sys.exit(f"wheel is missing runtime data: {missing}")
+          print("wheel contains all required runtime data")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write  # trusted publishing; no API token stored
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

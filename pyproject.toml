@@ -1,0 +1,93 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repo-to-skill"
+dynamic = ["version"]
+description = "Convert any repository into a portable capability skill"
+readme = "README.md"
+requires-python = ">=3.10"
+# SPDX expression, not a TOML table: the table form is deprecated and stops building
+# after 2027-02-18. Likewise the "License ::" classifier, which is replaced by this.
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Abinash Balaraman" }]
+keywords = ["agents", "agent-skills", "llm", "static-analysis", "code-generation", "skills"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Documentation",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["ruff>=0.5", "mypy>=1.10", "build>=1.2"]
+
+[project.scripts]
+r2s = "r2s.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/abinashbalaraman/repo-to-skill"
+Repository = "https://github.com/abinashbalaraman/repo-to-skill"
+Issues = "https://github.com/abinashbalaraman/repo-to-skill/issues"
+Changelog = "https://github.com/abinashbalaraman/repo-to-skill/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# All runtime data lives inside the package so it ships in the wheel. Fixtures are
+# deliberately excluded: they are eval goldens, not runtime data.
+r2s = [
+    "py.typed",
+    "data/*.json",
+    "data/catalog/*.json",
+    "data/catalog/stand-ins/*.json",
+    "data/harness-profiles/*.json",
+    "data/schemas/*.json",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "r2s.__version__" }
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "PTH", "RET"]
+ignore = [
+    "E501",  # line length is handled by the formatter
+    "SIM108",  # ternaries are not always clearer than if/else
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true
+ignore_missing_imports = true
+# The interesting type surface in this project is the JSON documents, and those are
+# validated at runtime by validate/schema.py rather than statically. Demanding an
+# annotation on every local would be noise, so only that check is off; everything
+# mypy can infer without one is still enforced.
+disable_error_code = ["var-annotated"]

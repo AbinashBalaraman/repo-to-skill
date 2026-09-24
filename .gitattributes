@@ -1,0 +1,16 @@
+# Normalise line endings so a Windows checkout and a Linux checkout produce identical
+# trees. Without this, git warns on every file and CI diffs churn.
+* text=auto eol=lf
+
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+*.png binary
+*.jpg binary
+*.pdf binary
+*.whl binary
+*.gz binary

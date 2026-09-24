@@ -1,0 +1,231 @@
+{
+  "schema_version": "1.0.0",
+  "source": {
+    "kind": "git",
+    "url": "https://github.com/darkzOGx/youtube-automation-agent",
+    "sha": "v2.10.0",
+    "subdir": null,
+    "license": null
+  },
+  "repo_class": "agent-system",
+  "repo_class_confidence": "high",
+  "inventory_status": "reviewed",
+  "extraction": {
+    "converter_version": "0.1.0",
+    "catalog_version": "0.1.0",
+    "generated_at": null,
+    "sources_run": ["T0", "T1", "T2", "T3"],
+    "truncated": false
+  },
+  "profile": null,
+  "operations": [
+    {
+      "id": "research-niche", "name": "Research the niche", "stage": "acquire",
+      "effect": "read-external", "requires": ["web.search", "text.summarize"],
+      "optional": false, "deterministic": false, "gate": [],
+      "confidence": "high",
+      "evidence": [{"source": "declared", "loc": "agents/content-strategy-agent.js", "detail": "agent role declaration"}],
+      "summary": "Gather sources for the chosen niche",
+      "credentials": [], "stand_in": "reasoning-without-sources",
+      "trigger": "manual", "entrypoint": {"kind": "agent-role", "loc": "agents/content-strategy-agent.js"}
+    },
+    {
+      "id": "pick-topic", "name": "Select the topic", "stage": "prepare",
+      "effect": "effectful-external", "requires": ["text.generate", "text.classify"],
+      "optional": false, "deterministic": false, "gate": [],
+      "confidence": "high",
+      "evidence": [{"source": "declared", "loc": "agents/content-strategy-agent.js", "detail": "agent role declaration"}],
+      "summary": "Choose the topic from the researched set",
+      "credentials": [], "stand_in": null,
+      "trigger": "manual", "entrypoint": {"kind": "agent-role", "loc": "agents/content-strategy-agent.js"}
+    },
+    {
+      "id": "write-script", "name": "Write the script", "stage": "transform",
+      "effect": "effectful-external", "requires": ["text.generate"],
+      "optional": false, "deterministic": false, "gate": [],
+      "confidence": "high",
+      "evidence": [{"source": "declared", "loc": "agents/script-writer-agent.js", "detail": "agent role declaration"}],
+      "summary": "Produce hook, narrative and call to action",
+      "credentials": [], "stand_in": null,
+      "trigger": "manual", "entrypoint": {"kind": "agent-role", "loc": "agents/script-writer-agent.js"}
+    },
+    {
+      "id": "seo-metadata", "name": "Generate title, tags and description", "stage": "transform",
+      "effect": "effectful-external", "requires": ["text.generate"],
+      "optional": false, "deterministic": false, "gate": [],
+      "confidence": "high",
+      "evidence": [{"source": "declared", "loc": "agents/seo-optimizer-agent.js", "detail": "agent role declaration"}],
+      "summary": "Produce the discoverability surface",
+      "credentials": [], "stand_in": null,
+      "trigger": "manual", "entrypoint": {"kind": "agent-role", "loc": "agents/seo-optimizer-agent.js"}
+    },
+    {
+      "id": "plan-scenes", "name": "Build the scene manifest", "stage": "transform",
+      "effect": "effectful-external", "requires": ["text.generate"],
+      "optional": false, "deterministic": false, "gate": [],
+      "confidence": "high",
+      "evidence": [{"source": "declared", "loc": "agents/visual-director-agent.js", "detail": "agent role declaration"}],
+      "summary": "Break the script into scenes with visual direction",
+      "credentials": [], "stand_in": null,
+      "trigger": "manual", "entrypoint": {"kind": "agent-role", "loc": "agents/visual-director-agent.js"}
+    },
+    {
+      "id": "gen-narration", "name": "Synthesise narration", "stage": "transform",
+      "effect": "effectful-external", "requires": ["audio.tts"],
+      "optional": false, "deterministic": false,
+      "gate": ["spend"], "gate_confidence": "high",
+      "confidence": "high",
+      "evidence": [
+        {"source": "declared", "loc": "agents/narration-agent.js", "detail": "agent role declaration"},
+        {"source": "inferred", "loc": "manifest", "detail": "pypi:elevenlabs -> elevenlabs"}
+      ],
+      "summary": "Paid TTS provider",
+      "credentials": [{"name": "ELEVENLABS_API_KEY", "kind": "apikey", "env": "ELEVENLABS_API_KEY"}],
+      "stand_in": null,
+      "trigger": "manual", "entrypoint": {"kind": "agent-role", "loc": "agents/narration-agent.js"},
+      "notes": "No honest deterministic substitute for speech, so this correctly halts on harnesses without TTS."
+    },
+    {
+      "id": "gen-scene-visuals", "name": "Generate scene visuals", "stage": "transform",
+      "effect": "effectful-external", "requires": ["image.generate", "video.generate"],
+      "optional": false, "deterministic": false,
+      "gate": ["spend"], "gate_confidence": "high",
+      "confidence": "high",
+      "evidence": [
+        {"source": "declared", "loc": "agents/visual-director-agent.js", "detail": "agent role declaration"},
+        {"source": "inferred", "loc": "manifest", "detail": "pypi:replicate -> replicate (ambiguous)"}
+      ],
+      "summary": "Paid image and video generation",
+      "credentials": [{"name": "REPLICATE_API_TOKEN", "kind": "apikey", "env": "REPLICATE_API_TOKEN"}],
+      "stand_in": "gradient-card-1080p",
+      "trigger": "manual", "entrypoint": {"kind": "agent-role", "loc": "agents/visual-director-agent.js"}
+    },
+    {
+      "id": "gen-thumbnail", "name": "Generate the thumbnail", "stage": "transform",
+      "effect": "effectful-external", "requires": ["image.generate"],
+      "optional": false, "deterministic": false,
+      "gate": ["spend"], "gate_confidence": "high",
+      "confidence": "high",
+      "evidence": [{"source": "declared", "loc": "agents/thumbnail-agent.js", "detail": "agent role declaration"}],
+      "summary": "Thumbnail generation",
+      "credentials": [{"name": "OPENAI_API_KEY", "kind": "apikey", "env": "OPENAI_API_KEY"}],
+      "stand_in": "gradient-card-720p",
+      "trigger": "manual", "entrypoint": {"kind": "agent-role", "loc": "agents/thumbnail-agent.js"}
+    },
+    {
+      "id": "gen-captions", "name": "Produce captions", "stage": "transform",
+      "effect": "effectful-external", "requires": ["audio.transcribe"],
+      "optional": true, "deterministic": false, "gate": [],
+      "confidence": "medium",
+      "evidence": [{"source": "declared", "loc": "agents/narration-agent.js", "detail": "agent role declaration"}],
+      "summary": "Timed captions from narration",
+      "credentials": [], "stand_in": "srt-from-text",
+      "trigger": "manual", "entrypoint": {"kind": "agent-role", "loc": "agents/narration-agent.js"}
+    },
+    {
+      "id": "assemble-master", "name": "Assemble the master video", "stage": "transform",
+      "effect": "effectful-local", "requires": ["media.assemble"],
+      "optional": false, "deterministic": true, "gate": [],
+      "confidence": "high",
+      "evidence": [
+        {"source": "declared", "loc": "utils/ffmpeg.js", "detail": "ffmpeg invocation"},
+        {"source": "inferred", "loc": "manifest", "detail": "npm:fluent-ffmpeg -> moviepy"}
+      ],
+      "summary": "Mux narration and visuals into the master",
+      "credentials": [], "stand_in": null,
+      "trigger": "manual", "entrypoint": {"kind": "util", "loc": "utils/ffmpeg.js"}
+    },
+    {
+      "id": "fact-check", "name": "Fact-check the script", "stage": "verify",
+      "effect": "read-external", "requires": ["text.generate", "web.search"],
+      "optional": false, "deterministic": false, "gate": [],
+      "confidence": "high",
+      "evidence": [{"source": "declared", "loc": "agents/fact-check-agent.js", "detail": "agent role declaration"}],
+      "summary": "Verify claims against sources",
+      "credentials": [], "stand_in": "flag-unverifiable-claims",
+      "trigger": "manual", "entrypoint": {"kind": "agent-role", "loc": "agents/fact-check-agent.js"}
+    },
+    {
+      "id": "rights-provenance", "name": "Rights and provenance review", "stage": "verify",
+      "effect": "effectful-external", "requires": ["human.review"],
+      "optional": false, "deterministic": false,
+      "gate": ["legal"], "gate_confidence": "high",
+      "confidence": "high",
+      "evidence": [{"source": "declared", "loc": "agents/rights-agent.js", "detail": "agent role declaration"}],
+      "summary": "Confirm rights and record synthetic-media disclosure",
+      "credentials": [], "stand_in": null,
+      "trigger": "manual", "entrypoint": {"kind": "agent-role", "loc": "agents/rights-agent.js"},
+      "notes": "Must never be inferred or automated."
+    },
+    {
+      "id": "production-readiness", "name": "Production readiness check", "stage": "verify",
+      "effect": "read-local", "requires": ["validate.schema", "media.probe"],
+      "optional": false, "deterministic": true, "gate": [],
+      "confidence": "high",
+      "evidence": [{"source": "declared", "loc": "utils/readiness.js", "detail": "readiness gate"}],
+      "summary": "Confirm the artefact is publishable",
+      "credentials": [], "stand_in": null,
+      "trigger": "manual", "entrypoint": {"kind": "util", "loc": "utils/readiness.js"}
+    },
+    {
+      "id": "human-approval", "name": "Human approval before publish", "stage": "verify",
+      "effect": "effectful-external", "requires": ["human.decide"],
+      "optional": false, "deterministic": false,
+      "gate": ["irreversible"], "gate_confidence": "high",
+      "confidence": "high",
+      "evidence": [{"source": "declared", "loc": "schedules/review.js", "detail": "approval checkpoint"}],
+      "summary": "Approval-first by default",
+      "credentials": [], "stand_in": null,
+      "trigger": "manual", "entrypoint": {"kind": "checkpoint", "loc": "schedules/review.js"}
+    },
+    {
+      "id": "upload-video", "name": "Upload to YouTube", "stage": "deliver",
+      "effect": "effectful-external", "requires": ["secret.oauth", "http.request"],
+      "optional": false, "deterministic": true,
+      "gate": ["publish", "irreversible", "privacy"], "gate_confidence": "high",
+      "confidence": "high",
+      "evidence": [
+        {"source": "declared", "loc": "utils/youtube.js", "detail": "YouTube Data API upload"},
+        {"source": "inferred", "loc": "manifest", "detail": "pypi:google-api-python-client -> google-api-python-client (ambiguous)"}
+      ],
+      "summary": "Publish via the YouTube Data API",
+      "credentials": [{"name": "YOUTUBE_OAUTH", "kind": "oauth", "env": null}],
+      "stand_in": null,
+      "trigger": "manual", "entrypoint": {"kind": "api", "loc": "utils/youtube.js"},
+      "notes": "Privacy must default to private. The gate is profile-invariant."
+    },
+    {
+      "id": "schedule-release", "name": "Schedule the release", "stage": "deliver",
+      "effect": "effectful-external", "requires": ["schedule.cron"],
+      "optional": true, "deterministic": true,
+      "gate": ["publish"], "gate_confidence": "high",
+      "confidence": "high",
+      "evidence": [{"source": "declared", "loc": "schedules/publish.js", "detail": "cron schedule"}],
+      "summary": "Queue the upload for a future slot",
+      "credentials": [], "stand_in": null,
+      "trigger": "scheduled", "entrypoint": {"kind": "schedule", "loc": "schedules/publish.js"}
+    },
+    {
+      "id": "pull-analytics", "name": "Pull performance analytics", "stage": "observe",
+      "effect": "read-external", "requires": ["secret.oauth", "http.request", "data.write"],
+      "optional": true, "deterministic": true, "gate": [],
+      "confidence": "high",
+      "evidence": [{"source": "declared", "loc": "schedules/analytics.js", "detail": "analytics schedule"}],
+      "summary": "Read back performance for the learning loop",
+      "credentials": [{"name": "YOUTUBE_OAUTH", "kind": "oauth", "env": null}],
+      "stand_in": null,
+      "trigger": "scheduled", "entrypoint": {"kind": "schedule", "loc": "schedules/analytics.js"},
+      "notes": "Must ask rather than invent numbers when credentials are absent."
+    },
+    {
+      "id": "repurpose-shorts", "name": "Repurpose into Shorts", "stage": "deliver",
+      "effect": "effectful-external", "requires": ["video.edit", "text.generate"],
+      "optional": true, "deterministic": false, "gate": [],
+      "confidence": "medium",
+      "evidence": [{"source": "declared", "loc": "agents/shorts-agent.js", "detail": "agent role declaration"}],
+      "summary": "Cut vertical clips from the master",
+      "credentials": [], "stand_in": "vertical-cut",
+      "trigger": "manual", "entrypoint": {"kind": "agent-role", "loc": "agents/shorts-agent.js"}
+    }
+  ]
+}

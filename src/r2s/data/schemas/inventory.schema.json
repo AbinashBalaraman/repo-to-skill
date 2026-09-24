@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://r2s.local/schemas/inventory.schema.json",
+  "title": "r2s operation inventory",
+  "description": "The contract between extraction and routing. The router consumes a reviewed inventory and never the draft.",
+  "type": "object",
+  "required": ["schema_version", "source", "repo_class", "inventory_status", "extraction", "operations"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string" },
+
+    "source": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["git", "local"] },
+        "url": { "type": ["string", "null"] },
+        "sha": { "type": ["string", "null"], "description": "Pinned commit. Required for git sources so conversions are reproducible." },
+        "subdir": { "type": ["string", "null"], "description": "Selected package inside a monorepo." },
+        "license": { "type": ["string", "null"], "description": "Detected SPDX id or 'none'. 'none' means do not copy repo code." }
+      }
+    },
+
+    "repo_class": { "enum": ["library", "cli-tool", "service-app", "agent-system", "infra-config", "unknown"] },
+    "repo_class_confidence": { "enum": ["high", "medium", "low"] },
+
+    "profile": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "native": { "type": "array", "items": { "type": "string" } },
+        "mcp": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "inventory_status": { "enum": ["draft", "reviewed", "accepted-unreviewed"] },
+
+    "extraction": {
+      "type": "object",
+      "required": ["converter_version"],
+      "additionalProperties": false,
+      "properties": {
+        "converter_version": { "type": "string" },
+        "catalog_version": { "type": ["string", "null"] },
+        "generated_at": { "type": ["string", "null"] },
+        "sources_run": { "type": "array", "items": { "enum": ["T0", "T1", "T2", "T3", "T4"] } },
+        "truncated": { "type": "boolean", "description": "True when scan caps were hit; the inventory may be incomplete." }
+      }
+    },
+
+    "operations": { "type": "array", "items": { "$ref": "#/$defs/operation" } }
+  },
+
+  "$defs": {
+    "phase": {
+      "description": "Repo-agnostic lifecycle phase. Gates cluster predictably by phase, which is why this set earns its keep.",
+      "enum": ["acquire", "prepare", "transform", "verify", "deliver", "observe"]
+    },
+
+    "effect": {
+      "enum": ["read-local", "read-external", "effectful-local", "effectful-external"]
+    },
+
+    "gate": { "enum": ["publish", "spend", "irreversible", "legal", "privacy"] },
+
+    "confidence": { "enum": ["high", "medium", "low"] },
+
+    "evidence": {
+      "type": "object",
+      "required": ["source", "loc"],
+      "additionalProperties": false,
+      "properties": {
+        "source": { "enum": ["declared", "traced", "inferred", "documented", "proposed"] },
+        "loc": { "type": "string", "description": "file:line or file#section" },
+        "detail": { "type": "string" }
+      }
+    },
+
+    "credential": {
+      "type": "object",
+      "required": ["name", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "kind": { "enum": ["apikey", "oauth", "token", "password", "other"] },
+        "env": { "type": ["string", "null"] }
+      }
+    },
+
+    "operation": {
+      "type": "object",
+      "required": [
+        "id", "name", "stage", "effect", "requires", "optional",
+        "deterministic", "gate", "confidence", "evidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "name": { "type": "string", "minLength": 1 },
+        "stage": { "$ref": "#/$defs/phase" },
+        "effect": { "$ref": "#/$defs/effect" },
+        "requires": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Capability IDs. Validated against capabilities.json; unknown IDs are a hard error, never treated as 'missing'."
+        },
+        "optional": { "type": "boolean" },
+        "deterministic": { "type": "boolean" },
+        "gate": { "type": "array", "items": { "$ref": "#/$defs/gate" } },
+        "gate_confidence": { "$ref": "#/$defs/confidence" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" }, "minItems": 1 },
+        "summary": { "type": "string" },
+        "credentials": { "type": "array", "items": { "$ref": "#/$defs/credential" } },
+        "stand_in": {
+          "type": ["string", "null"],
+          "description": "Catalog ID from catalog/stand-ins/index.json. Inline stand-in definitions are rejected: an invented stand-in is indistinguishable from fabrication."
+        },
+        "trigger": { "enum": ["manual", "scheduled", "event"] },
+        "entrypoint": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "type": "string" },
+            "loc": { "type": "string" }
+          }
+        },
+        "notes": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "gate": { "minItems": 1 } }, "required": ["gate"] },
+          "then": { "required": ["gate_confidence"] }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,18 @@
+[project]
+name = "feed-sync"
+version = "0.3.1"
+description = "Fetch a feed, store entries, publish a digest to a webhook"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1",
+    "requests>=2.31",
+    "sqlalchemy>=2.0",
+    "feedparser>=6.0",
+    "pytest>=7.0",
+]
+
+[project.scripts]
+feed-sync = "feed_sync.cli:cli"
+
+[tool.setuptools]
+package-dir = {"" = "src"}

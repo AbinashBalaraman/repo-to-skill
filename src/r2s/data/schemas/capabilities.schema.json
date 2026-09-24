@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://r2s.local/schemas/capabilities.schema.json",
+  "title": "Capability vocabulary",
+  "type": "object",
+  "required": ["version", "kinds", "capabilities"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "string" },
+    "notes": { "type": "string" },
+    "kinds": {
+      "type": "array",
+      "items": { "enum": ["generative", "deterministic", "access", "human"] }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["kind", "desc"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "enum": ["generative", "deterministic", "access", "human"] },
+          "desc": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

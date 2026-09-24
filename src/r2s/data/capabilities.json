@@ -1,0 +1,61 @@
+{
+  "version": "2.0.0",
+  "notes": "Coarse, probeable capability vocabulary. Roughly one ID per harness tool. An operation declares the minimum set it needs; if any one is missing the operation cannot bind to that channel. Discipline: every ID must be probeable by a harness profile, coarse enough to be one tool, and non-overlapping with its neighbours.",
+  "kinds": ["generative", "deterministic", "access", "human"],
+  "capabilities": {
+    "text.generate": { "kind": "generative", "desc": "Produce prose or structured text from a prompt." },
+    "text.summarize": { "kind": "generative", "desc": "Condense longer text into a shorter form." },
+    "text.classify": { "kind": "generative", "desc": "Assign labels or categories to text." },
+    "text.extract": { "kind": "generative", "desc": "Pull structured fields out of unstructured text." },
+
+    "image.generate": { "kind": "generative", "desc": "Create a new still image from a prompt." },
+    "image.edit": { "kind": "generative", "desc": "Modify an existing still image." },
+    "video.generate": { "kind": "generative", "desc": "Create a new moving-image clip from a prompt or image." },
+    "video.edit": { "kind": "generative", "desc": "Transform or re-cut existing video." },
+    "audio.tts": { "kind": "generative", "desc": "Synthesise speech from text." },
+    "audio.transcribe": { "kind": "generative", "desc": "Convert speech to timed text." },
+    "ml.train": { "kind": "generative", "desc": "Fit a model to data." },
+    "ml.infer": { "kind": "generative", "desc": "Run a trained model over inputs." },
+
+    "media.assemble": { "kind": "deterministic", "desc": "Compose, mux, trim or encode media. FFmpeg class." },
+    "media.probe": { "kind": "deterministic", "desc": "Inspect media properties: duration, codec, resolution." },
+    "format.render": { "kind": "deterministic", "desc": "Render a template into a document or graphic without a model." },
+
+    "file.read": { "kind": "deterministic", "desc": "Read local files." },
+    "file.write": { "kind": "deterministic", "desc": "Write local files." },
+    "file.list": { "kind": "deterministic", "desc": "Enumerate local files and directories." },
+    "shell.exec": { "kind": "deterministic", "desc": "Run a shell command." },
+    "code.exec": { "kind": "deterministic", "desc": "Run code in an interpreter or sandbox." },
+    "validate.schema": { "kind": "deterministic", "desc": "Check data against a schema or contract." },
+    "git.op": { "kind": "deterministic", "desc": "Perform a version-control operation: clone, commit, tag, push." },
+
+    "http.request": { "kind": "access", "desc": "Call an HTTP API directly." },
+    "web.search": { "kind": "access", "desc": "Search the web." },
+    "web.fetch": { "kind": "access", "desc": "Retrieve a URL's contents." },
+    "browser.automate": { "kind": "access", "desc": "Drive a real browser session." },
+    "external.call": { "kind": "access", "desc": "Generic fallback for an unrecognised external dependency. Never treat as 'requires nothing'." },
+
+    "secret.oauth": { "kind": "access", "desc": "A user-authorised OAuth grant for a third party." },
+    "secret.apikey": { "kind": "access", "desc": "A user-supplied API key for a paid provider." },
+    "secret.read": { "kind": "access", "desc": "Read a secret from a vault or secret store." },
+
+    "data.query": { "kind": "access", "desc": "Read from a database." },
+    "data.write": { "kind": "access", "desc": "Persist records to a database." },
+    "db.migrate": { "kind": "access", "desc": "Apply a schema migration to a database." },
+    "storage.object": { "kind": "access", "desc": "Read or write object storage." },
+    "cache.read": { "kind": "access", "desc": "Read from a cache." },
+    "cache.write": { "kind": "access", "desc": "Write to a cache." },
+    "queue.publish": { "kind": "access", "desc": "Enqueue or publish a message." },
+    "queue.consume": { "kind": "access", "desc": "Consume or subscribe to messages." },
+    "vector.search": { "kind": "access", "desc": "Query a vector index by similarity." },
+    "search.index": { "kind": "access", "desc": "Write documents into a search index." },
+    "payment.charge": { "kind": "access", "desc": "Move money or bill a customer." },
+    "notify.message": { "kind": "access", "desc": "Send a message to a person or channel." },
+    "schedule.cron": { "kind": "access", "desc": "Register a recurring or future execution." },
+    "container.op": { "kind": "access", "desc": "Build, run or push a container image." },
+    "deploy.op": { "kind": "access", "desc": "Deploy or release a service." },
+
+    "human.decide": { "kind": "human", "desc": "A person makes a judgement call." },
+    "human.review": { "kind": "human", "desc": "A person inspects an artefact for correctness or rights." }
+  }
+}

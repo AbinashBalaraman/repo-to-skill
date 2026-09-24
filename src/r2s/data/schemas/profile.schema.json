@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://r2s.local/schemas/profile.schema.json",
+  "title": "Harness capability profile",
+  "description": "Declares what a harness can do. The capability map is a function of (repo, harness), so the same operation routes differently per profile.",
+  "type": "object",
+  "required": ["id", "name", "native", "mcp"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+    "name": { "type": "string" },
+    "desc": { "type": "string" },
+    "native": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "mcp": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "probe": {
+      "type": ["string", "null"],
+      "description": "Shell command that enumerates the harness's tools, so the profile can be verified rather than assumed."
+    },
+    "expiry": {
+      "type": ["string", "null"],
+      "description": "ISO date after which the profile should be re-probed. Harness capabilities drift."
+    },
+    "notes": { "type": "string" }
+  }
+}

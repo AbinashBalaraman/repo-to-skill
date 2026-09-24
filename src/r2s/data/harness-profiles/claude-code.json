@@ -1,0 +1,18 @@
+{
+  "id": "claude-code",
+  "name": "Claude Code",
+  "desc": "Coding agent: text, files, shell, web access, and MCP servers that can be attached.",
+  "native": [
+    "text.generate", "text.summarize", "text.classify", "text.extract",
+    "file.read", "file.write", "file.list",
+    "shell.exec", "code.exec", "validate.schema",
+    "media.assemble", "media.probe", "format.render",
+    "web.search", "web.fetch"
+  ],
+  "mcp": [
+    "image.generate", "http.request", "data.query", "data.write"
+  ],
+  "probe": "claude mcp list",
+  "expiry": "2026-12-31",
+  "notes": "No native image/video/audio generation. Visual steps route to MCP when an image server is attached, otherwise to an FFmpeg stand-in."
+}

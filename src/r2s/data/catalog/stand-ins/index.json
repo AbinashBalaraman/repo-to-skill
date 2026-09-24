@@ -1,0 +1,86 @@
+{
+  "version": "0.1.0",
+  "notes": "Curated degraded substitutes. An operation references one by ID; inline definitions are rejected by the validator, because an invented stand-in is indistinguishable from fabrication. Three types: `reducing` does the same job worse, `deferred` stages the work locally and hands off, `no-op` does nothing and reports the gap.",
+  "defaults": {
+    "image.generate": "gradient-card-1080p",
+    "video.generate": "ken-burns-still",
+    "video.edit": "vertical-cut",
+    "audio.transcribe": "srt-from-text",
+    "web.search": "reasoning-without-sources"
+  },
+  "defaults_note": "Capability -> stand-in, used only when the extractor finds no better option. Curated here rather than generated, so a stand-in is always a declared choice. Capabilities absent from this map (notably audio.tts) have no honest substitute and will correctly halt at ask-user instead.",
+  "standins": [
+    {
+      "id": "gradient-card-1080p",
+      "type": "reducing",
+      "capability": "media.assemble",
+      "fidelity": 0.25,
+      "desc": "Render the scene's title text on a solid gradient card at 1920x1080 via FFmpeg",
+      "caveat": "Output looks like a slideshow, not footage. Suitable only where motion is decorative."
+    },
+    {
+      "id": "gradient-card-720p",
+      "type": "reducing",
+      "capability": "media.assemble",
+      "fidelity": 0.3,
+      "desc": "Composite the title on a high-contrast gradient card at 1280x720 via FFmpeg",
+      "caveat": "No imagery, no subject. Fine as a placeholder, weak as a thumbnail."
+    },
+    {
+      "id": "ken-burns-still",
+      "type": "reducing",
+      "capability": "media.assemble",
+      "fidelity": 0.4,
+      "desc": "Pan and zoom slowly across a single still image to produce apparent motion",
+      "caveat": "Reads as motion without generating any. Cheap and usually better than a static card."
+    },
+    {
+      "id": "srt-from-text",
+      "type": "reducing",
+      "capability": "file.write",
+      "fidelity": 0.6,
+      "desc": "Derive an SRT from the script text using per-scene timing estimates",
+      "caveat": "Timings are estimated, not measured, so captions drift from the audio."
+    },
+    {
+      "id": "vertical-cut",
+      "type": "reducing",
+      "capability": "media.assemble",
+      "fidelity": 0.45,
+      "desc": "Cut vertical clips at scene boundaries via FFmpeg with no reframing",
+      "caveat": "Subjects will be cropped out. No face tracking, no safe-area awareness."
+    },
+    {
+      "id": "reasoning-without-sources",
+      "type": "reducing",
+      "capability": "text.generate",
+      "fidelity": 0.5,
+      "desc": "Reason about the subject from model knowledge alone, with no live sources",
+      "caveat": "No citations and no freshness. Must be labelled as unsourced in the output."
+    },
+    {
+      "id": "flag-unverifiable-claims",
+      "type": "reducing",
+      "capability": "text.generate",
+      "fidelity": 0.4,
+      "desc": "Flag claims that look unverifiable without live sources, rather than checking them",
+      "caveat": "Detection is heuristic. A claim that looks fine may still be wrong."
+    },
+    {
+      "id": "deferred-stage-and-handoff",
+      "type": "deferred",
+      "capability": "file.write",
+      "fidelity": 0.0,
+      "desc": "Write the inputs and instructions to a handoff file, and stop for a human to run the step elsewhere",
+      "caveat": "The pipeline does not complete. This is the honest option when nothing can substitute."
+    },
+    {
+      "id": "no-op-report",
+      "type": "no-op",
+      "capability": "file.write",
+      "fidelity": 0.0,
+      "desc": "Skip the step and record the omission in the output manifest",
+      "caveat": "Only legal for optional operations. A required operation routed here is a bug."
+    }
+  ]
+}

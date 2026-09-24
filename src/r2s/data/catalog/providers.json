@@ -1,0 +1,262 @@
+{
+  "version": "0.1.0",
+  "notes": "Maps package/import names to capabilities, credentials, effect class and gate hints. This catalog is the scaling asset: every entry added improves extraction for every repo. Two hard rules: (1) an ambiguous package must never be resolved by import alone -- mark it ambiguous and let call-site tracing disambiguate; (2) an unknown package must never yield 'requires nothing' -- use external.call with low confidence.",
+  "providers": [
+    {
+      "id": "openai",
+      "match": { "pypi": ["openai"], "npm": ["openai"] },
+      "capabilities": ["text.generate"],
+      "credentials": [{ "name": "OPENAI_API_KEY", "kind": "apikey", "env": "OPENAI_API_KEY" }],
+      "effect": "effectful-external",
+      "gate_hints": ["spend"]
+    },
+    {
+      "id": "anthropic",
+      "match": { "pypi": ["anthropic"], "npm": ["@anthropic-ai/sdk"] },
+      "capabilities": ["text.generate"],
+      "credentials": [{ "name": "ANTHROPIC_API_KEY", "kind": "apikey", "env": "ANTHROPIC_API_KEY" }],
+      "effect": "effectful-external",
+      "gate_hints": ["spend"]
+    },
+    {
+      "id": "elevenlabs",
+      "match": { "pypi": ["elevenlabs"] },
+      "capabilities": ["audio.tts"],
+      "credentials": [{ "name": "ELEVENLABS_API_KEY", "kind": "apikey", "env": "ELEVENLABS_API_KEY" }],
+      "effect": "effectful-external",
+      "gate_hints": ["spend"]
+    },
+    {
+      "id": "replicate",
+      "match": { "pypi": ["replicate"], "npm": ["replicate"] },
+      "capabilities": ["image.generate", "video.generate"],
+      "credentials": [{ "name": "REPLICATE_API_TOKEN", "kind": "apikey", "env": "REPLICATE_API_TOKEN" }],
+      "effect": "effectful-external",
+      "gate_hints": ["spend"],
+      "ambiguous": true,
+      "ambiguous_note": "One client, many models. Import alone cannot tell image from video; resolve by inspecting the model ref at the call site."
+    },
+    {
+      "id": "stripe",
+      "match": { "pypi": ["stripe"], "npm": ["stripe"] },
+      "capabilities": ["payment.charge"],
+      "credentials": [{ "name": "STRIPE_API_KEY", "kind": "apikey", "env": "STRIPE_API_KEY" }],
+      "effect": "effectful-external",
+      "gate_hints": ["spend", "irreversible"]
+    },
+    {
+      "id": "sendgrid",
+      "match": { "pypi": ["sendgrid"] },
+      "capabilities": ["notify.message"],
+      "credentials": [{ "name": "SENDGRID_API_KEY", "kind": "apikey", "env": "SENDGRID_API_KEY" }],
+      "effect": "effectful-external",
+      "gate_hints": []
+    },
+    {
+      "id": "twilio",
+      "match": { "pypi": ["twilio"], "npm": ["twilio"] },
+      "capabilities": ["notify.message"],
+      "credentials": [{ "name": "TWILIO_AUTH_TOKEN", "kind": "token", "env": "TWILIO_AUTH_TOKEN" }],
+      "effect": "effectful-external",
+      "gate_hints": ["spend"]
+    },
+    {
+      "id": "boto3",
+      "match": { "pypi": ["boto3", "botocore"], "npm": ["aws-sdk", "@aws-sdk/client-s3"] },
+      "capabilities": ["storage.object", "data.query", "queue.publish", "notify.message"],
+      "credentials": [{ "name": "AWS_ACCESS_KEY_ID", "kind": "token", "env": "AWS_ACCESS_KEY_ID" }],
+      "effect": "effectful-external",
+      "gate_hints": [],
+      "ambiguous": true,
+      "ambiguous_note": "Could be storage, database, queue or notification depending on the client. Import-only detection must lower confidence and never require all four."
+    },
+    {
+      "id": "google-cloud-storage",
+      "match": { "pypi": ["google-cloud-storage"], "npm": ["@google-cloud/storage"] },
+      "capabilities": ["storage.object"],
+      "credentials": [{ "name": "GOOGLE_APPLICATION_CREDENTIALS", "kind": "token", "env": "GOOGLE_APPLICATION_CREDENTIALS" }],
+      "effect": "effectful-external",
+      "gate_hints": []
+    },
+    {
+      "id": "google-api-python-client",
+      "match": { "pypi": ["google-api-python-client", "googleapis-common-protos"] },
+      "capabilities": ["http.request"],
+      "credentials": [{ "name": "GOOGLE_OAUTH", "kind": "oauth", "env": null }],
+      "effect": "effectful-external",
+      "gate_hints": [],
+      "ambiguous": true,
+      "ambiguous_note": "Discovery-based client spanning hundreds of Google APIs, including YouTube publish. Resolve by inspecting the service name and the build() call."
+    },
+    {
+      "id": "google-genai",
+      "match": { "pypi": ["google-genai", "google-generativeai"], "npm": ["@google/genai"] },
+      "capabilities": ["text.generate", "image.generate"],
+      "credentials": [{ "name": "GEMINI_API_KEY", "kind": "apikey", "env": "GEMINI_API_KEY" }],
+      "effect": "effectful-external",
+      "gate_hints": ["spend"],
+      "ambiguous": true,
+      "ambiguous_note": "Text and image generation share one client."
+    },
+    {
+      "id": "sqlalchemy",
+      "match": { "pypi": ["sqlalchemy", "psycopg2", "psycopg", "pymysql", "asyncpg"] },
+      "capabilities": ["data.query", "data.write"],
+      "credentials": [{ "name": "DATABASE_URL", "kind": "password", "env": "DATABASE_URL" }],
+      "effect": "effectful-external",
+      "gate_hints": [],
+      "ambiguous": true,
+      "ambiguous_note": "Read and write share a session. Resolve by tracing commit()/add() versus select()."
+    },
+    {
+      "id": "prisma",
+      "match": { "npm": ["@prisma/client", "prisma"] },
+      "capabilities": ["data.query", "data.write", "db.migrate"],
+      "credentials": [{ "name": "DATABASE_URL", "kind": "password", "env": "DATABASE_URL" }],
+      "effect": "effectful-external",
+      "gate_hints": [],
+      "ambiguous": true,
+      "ambiguous_note": "Query, write and migrate all flow through one client."
+    },
+    {
+      "id": "alembic",
+      "match": { "pypi": ["alembic"] },
+      "capabilities": ["db.migrate"],
+      "credentials": [{ "name": "DATABASE_URL", "kind": "password", "env": "DATABASE_URL" }],
+      "effect": "effectful-external",
+      "gate_hints": ["irreversible"]
+    },
+    {
+      "id": "redis",
+      "match": { "pypi": ["redis"], "npm": ["redis", "ioredis"] },
+      "capabilities": ["cache.read", "cache.write"],
+      "credentials": [{ "name": "REDIS_URL", "kind": "password", "env": "REDIS_URL" }],
+      "effect": "effectful-external",
+      "gate_hints": [],
+      "ambiguous": true,
+      "ambiguous_note": "Also used as a queue broker. Resolve by inspecting the command names."
+    },
+    {
+      "id": "celery",
+      "match": { "pypi": ["celery", "kombu", "rq"] },
+      "capabilities": ["queue.publish", "queue.consume"],
+      "credentials": [{ "name": "BROKER_URL", "kind": "password", "env": "BROKER_URL" }],
+      "effect": "effectful-external",
+      "gate_hints": []
+    },
+    {
+      "id": "kafkajs",
+      "match": { "npm": ["kafkajs", "amqplib", "bullmq"] },
+      "capabilities": ["queue.publish", "queue.consume"],
+      "credentials": [],
+      "effect": "effectful-external",
+      "gate_hints": []
+    },
+    {
+      "id": "pinecone",
+      "match": { "pypi": ["pinecone", "chromadb", "weaviate-client", "qdrant-client", "faiss-cpu"] },
+      "capabilities": ["vector.search"],
+      "credentials": [{ "name": "PINECONE_API_KEY", "kind": "apikey", "env": "PINECONE_API_KEY" }],
+      "effect": "effectful-external",
+      "gate_hints": []
+    },
+    {
+      "id": "elasticsearch",
+      "match": { "pypi": ["elasticsearch"], "npm": ["@elastic/elasticsearch"] },
+      "capabilities": ["search.index"],
+      "credentials": [{ "name": "ELASTIC_URL", "kind": "password", "env": "ELASTIC_URL" }],
+      "effect": "effectful-external",
+      "gate_hints": []
+    },
+    {
+      "id": "playwright",
+      "match": { "pypi": ["playwright", "selenium"], "npm": ["playwright", "puppeteer", "selenium-webdriver"] },
+      "capabilities": ["browser.automate"],
+      "credentials": [],
+      "effect": "effectful-external",
+      "gate_hints": []
+    },
+    {
+      "id": "moviepy",
+      "match": { "pypi": ["moviepy", "ffmpeg-python", "imageio-ffmpeg"], "npm": ["fluent-ffmpeg"] },
+      "capabilities": ["media.assemble", "media.probe"],
+      "credentials": [],
+      "effect": "effectful-local",
+      "gate_hints": []
+    },
+    {
+      "id": "pillow",
+      "match": { "pypi": ["pillow"], "npm": ["sharp", "jimp"] },
+      "capabilities": ["format.render"],
+      "credentials": [],
+      "effect": "effectful-local",
+      "gate_hints": []
+    },
+    {
+      "id": "torch",
+      "match": { "pypi": ["torch", "tensorflow", "transformers", "scikit-learn"], "npm": ["@tensorflow/tfjs"] },
+      "capabilities": ["ml.train", "ml.infer"],
+      "credentials": [],
+      "effect": "effectful-local",
+      "gate_hints": [],
+      "ambiguous": true,
+      "ambiguous_note": "Training and inference share one import. Resolve by inspecting .fit() versus .predict()."
+    },
+    {
+      "id": "whisper",
+      "match": { "pypi": ["openai-whisper", "faster-whisper"], "npm": ["whisper-node"] },
+      "capabilities": ["audio.transcribe"],
+      "credentials": [],
+      "effect": "effectful-local",
+      "gate_hints": []
+    },
+    {
+      "id": "requests",
+      "match": { "pypi": ["requests", "httpx", "aiohttp", "urllib3"], "npm": ["axios", "node-fetch", "undici", "got"] },
+      "capabilities": ["http.request"],
+      "credentials": [],
+      "effect": "effectful-external",
+      "gate_hints": [],
+      "ambiguous": true,
+      "ambiguous_note": "Generic HTTP. Effect depends entirely on the verb and the target; resolve at the call site."
+    },
+    {
+      "id": "docker",
+      "match": { "pypi": ["docker"], "npm": ["dockerode"] },
+      "capabilities": ["container.op"],
+      "credentials": [],
+      "effect": "effectful-external",
+      "gate_hints": []
+    },
+    {
+      "id": "gitpython",
+      "match": { "pypi": ["gitpython", "pygit2"], "npm": ["simple-git", "isomorphic-git"] },
+      "capabilities": ["git.op"],
+      "credentials": [],
+      "effect": "effectful-local",
+      "gate_hints": []
+    },
+    {
+      "id": "ansible",
+      "match": { "pypi": ["ansible", "ansible-core"] },
+      "capabilities": ["deploy.op"],
+      "credentials": [],
+      "effect": "effectful-external",
+      "gate_hints": ["irreversible"]
+    },
+    {
+      "id": "hvac",
+      "match": { "pypi": ["hvac"], "npm": ["node-vault"] },
+      "capabilities": ["secret.read"],
+      "credentials": [{ "name": "VAULT_TOKEN", "kind": "token", "env": "VAULT_TOKEN" }],
+      "effect": "read-external",
+      "gate_hints": []
+    }
+  ],
+  "fallback": {
+    "capability": "external.call",
+    "effect": "effectful-external",
+    "confidence": "low",
+    "note": "Unknown dependency. Never treat as requiring nothing -- that is the dangerous direction."
+  }
+}

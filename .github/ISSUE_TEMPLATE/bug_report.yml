@@ -1,0 +1,77 @@
+name: Bug report
+description: Something produced the wrong result, crashed, or lost a gate.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The most useful thing you can attach is the
+        `inventory.review.md` that `r2s extract` produced — it shows the evidence
+        behind every operation, which is usually enough to localise the problem.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what did you get instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands you ran.
+      placeholder: |
+        r2s extract ./my-repo --out ./out
+        r2s convert ./out/inventory.json --profile bare
+    validations:
+      required: true
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Which stage is wrong?
+      options:
+        - extract — the inventory is wrong or incomplete
+        - convert — routing or gates are wrong
+        - validate — the validator accepted something it should reject
+        - cli — a command failed or behaved unexpectedly
+        - not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: r2s version
+      description: Output of `r2s --version`, or the commit SHA.
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version and OS
+      placeholder: "3.12.1 on Ubuntu 24.04"
+    validations:
+      required: true
+
+  - type: textarea
+    id: review
+    attributes:
+      label: Inventory review or report
+      description: Paste `inventory.review.md`, or the relevant part of the report.
+      render: markdown
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have removed any secrets, tokens or private repository contents from what I pasted.
+          required: true
+        - label: This is not a security issue (those go through SECURITY.md instead).
+          required: true

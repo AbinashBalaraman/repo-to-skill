@@ -1,0 +1,148 @@
+{
+  "version": "0.2.0",
+  "notes": "Call-site patterns that map an I/O boundary to a capability and an effect class. Matched during T1 effect tracing, which walks the call graph from an entrypoint only until it hits one of these, then stops. AMBIGUITY RULE: a bare method name that collides with a builtin or a common idiom (get, set, execute, add) must be scoped by `module` or dropped entirely. `dict.get` is not a cache read and `os.environ.get` is not an HTTP GET.",
+  "patterns": [
+    {
+      "id": "file-write-open",
+      "match": { "func": ["open"], "mode_in": ["w", "a", "x", "wb", "ab", "xb", "w+", "a+", "r+"] },
+      "capability": "file.write",
+      "effect": "effectful-local"
+    },
+    {
+      "id": "file-read-open",
+      "match": { "func": ["open"], "mode_not_in": ["w", "a", "x", "wb", "ab", "xb", "w+", "a+", "r+"] },
+      "capability": "file.read",
+      "effect": "read-local"
+    },
+    {
+      "id": "pathlib-write",
+      "match": { "func": ["write_text", "write_bytes", "touch", "unlink", "rmdir", "rename", "replace", "mkdir", "makedirs"] },
+      "capability": "file.write",
+      "effect": "effectful-local"
+    },
+    {
+      "id": "pathlib-read",
+      "match": { "func": ["read_text", "read_bytes", "iterdir", "rglob", "glob"] },
+      "capability": "file.read",
+      "effect": "read-local"
+    },
+    {
+      "id": "subprocess-exec",
+      "match": { "module": ["subprocess", "os"], "func": ["run", "call", "check_call", "check_output", "Popen", "system", "popen", "execv", "spawn", "spawnv"] },
+      "capability": "shell.exec",
+      "effect": "effectful-local"
+    },
+    {
+      "id": "http-mutating",
+      "match": { "module": ["requests", "httpx", "aiohttp", "urllib3", "urllib", "session", "client", "http", "api", "resp", "response"], "func": ["post", "put", "patch", "delete"] },
+      "capability": "http.request",
+      "effect": "effectful-external"
+    },
+    {
+      "id": "http-reading",
+      "match": { "module": ["requests", "httpx", "aiohttp", "urllib3", "urllib", "session", "client", "http", "api", "resp", "response"], "func": ["get", "head", "options"] },
+      "capability": "http.request",
+      "effect": "read-external"
+    },
+    {
+      "id": "http-request-generic",
+      "match": { "module": ["requests", "httpx", "aiohttp", "urllib3"], "func": ["request"] },
+      "capability": "http.request",
+      "effect": "effectful-external"
+    },
+    {
+      "id": "db-session-write",
+      "match": { "func": ["commit", "flush", "add_all", "bulk_save_objects", "upsert", "save", "insert_one", "update_one", "delete_one", "delete_many"] },
+      "capability": "data.write",
+      "effect": "effectful-external"
+    },
+    {
+      "id": "db-session-mutate",
+      "match": { "module": ["session", "db", "conn", "cursor", "repo", "repository", "store"], "func": ["add", "delete", "merge", "update"] },
+      "capability": "data.write",
+      "effect": "effectful-external"
+    },
+    {
+      "id": "sql-select",
+      "match": { "func": ["select"] },
+      "capability": "data.query",
+      "effect": "read-external"
+    },
+    {
+      "id": "db-read",
+      "match": { "func": ["fetchall", "fetchone", "fetchmany", "scalar", "scalars", "find_one", "aggregate", "distinct"] },
+      "capability": "data.query",
+      "effect": "read-external"
+    },
+    {
+      "id": "object-storage",
+      "match": { "func": ["upload_file", "upload_fileobj", "put_object", "download_file", "download_fileobj", "get_object", "upload_blob", "download_blob", "put_blob"] },
+      "capability": "storage.object",
+      "effect": "effectful-external"
+    },
+    {
+      "id": "queue-send",
+      "match": { "func": ["delay", "apply_async", "send_task", "publish_message", "enqueue", "produce", "dispatch_task", "send_message_to_queue"] },
+      "capability": "queue.publish",
+      "effect": "effectful-external"
+    },
+    {
+      "id": "cache-set",
+      "match": { "func": ["setex", "hset", "hmset", "lpush", "rpush", "sadd", "zadd", "expire", "setnx"] },
+      "capability": "cache.write",
+      "effect": "effectful-external"
+    },
+    {
+      "id": "cache-get",
+      "match": { "func": ["hget", "hgetall", "lrange", "smembers", "zrange", "mget", "exists"] },
+      "capability": "cache.read",
+      "effect": "read-external"
+    },
+    {
+      "id": "payment",
+      "match": { "func": ["charge", "capture", "refund", "create_payment_intent", "create_charge"] },
+      "capability": "payment.charge",
+      "effect": "effectful-external"
+    },
+    {
+      "id": "notify",
+      "match": { "func": ["sendmail", "send_email", "send_sms", "sendgrid_send", "messages_create"] },
+      "capability": "notify.message",
+      "effect": "effectful-external"
+    },
+    {
+      "id": "browser",
+      "match": { "func": ["goto", "new_page", "screenshot", "fill", "press_key"] },
+      "capability": "browser.automate",
+      "effect": "effectful-external"
+    },
+    {
+      "id": "media-encode",
+      "match": { "func": ["write_videofile", "write_audiofile", "write_gif", "concat", "overlay", "encode_video"] },
+      "capability": "media.assemble",
+      "effect": "effectful-local"
+    },
+    {
+      "id": "env-secret",
+      "match": { "module": ["os", "dotenv"], "func": ["getenv", "environ", "load_dotenv"] },
+      "capability": "secret.read",
+      "effect": "read-local"
+    },
+    {
+      "id": "scheduler",
+      "match": { "func": ["add_job", "periodic_task", "crontab_schedule", "cron_schedule"] },
+      "capability": "schedule.cron",
+      "effect": "effectful-external"
+    },
+    {
+      "id": "git-op",
+      "match": { "module": ["git", "pygit2", "subprocess"], "func": ["clone_from", "create_tag", "checkout", "pull", "fetch"] },
+      "capability": "git.op",
+      "effect": "effectful-local"
+    }
+  ],
+  "plumbing": {
+    "note": "Calls that are wholly internal and never become operations -- unless the repo's purpose IS that computation, in which case the operation is the computation itself.",
+    "func": ["print", "len", "str", "int", "float", "format", "join", "append", "extend", "update", "keys", "values", "items", "debug", "info", "warning", "error", "exception", "critical", "log", "echo", "secho", "style", "rule", "confirm", "prompt", "read", "close", "raise_for_status", "json", "get", "set", "add", "execute", "filter", "map", "sorted", "list", "dict", "setdefault", "strip", "split", "lower", "upper", "replace"]
+  }
+}

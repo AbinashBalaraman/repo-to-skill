@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: python -m pip install -e .
+
+      - name: Test
+        run: python -m unittest discover -s tests -v
+
+      - name: Byte-compile
+        run: python -m compileall -q src/r2s
+
+  installed-artifact:
+    name: installed artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build --wheel
+
+      - name: Install the wheel into a clean environment
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/python -m pip install --upgrade pip
+          /tmp/clean/bin/python -m pip install dist/*.whl
+
+      # The suite runs against the source tree, so it cannot catch data files that are
+      # missing from the wheel or paths resolved relative to the repository root. Run
+      # the CLI from outside the checkout to prove the package is self-contained.
+      - name: Run the console script outside the checkout
+        working-directory: /tmp
+        run: |
+          /tmp/clean/bin/r2s --version
+          /tmp/clean/bin/r2s profiles
+
+      - name: Packaged data is present in the wheel
+        run: |
+          /tmp/clean/bin/python - <<'PY'
+          from importlib.resources import files
+          required = [
+              "capabilities.json",
+              "catalog/providers.json",
+              "catalog/effects.json",
+              "catalog/stand-ins/index.json",
+              "harness-profiles/bare.json",
+              "harness-profiles/claude-code.json",
+              "harness-profiles/full.json",
+              "harness-profiles/workbuddy.json",
+              "schemas/inventory.schema.json",
+          ]
+          root = files("r2s").joinpath("data")
+          missing = [r for r in required if not root.joinpath(r).is_file()]
+          if missing:
+              raise SystemExit(f"missing from the wheel: {missing}")
+          print(f"all {len(required)} packaged data files present")
+          PY
+
+      - name: Extract a repository using only the installed package
+        working-directory: /tmp
+        run: |
+          mkdir -p smoke/src
+          cat > smoke/pyproject.toml <<'TOML'
+          [project]
+          name = "smoke"
+          version = "1.0"
+          dependencies = ["requests", "click"]
+          TOML
+          cat > smoke/src/cli.py <<'PY'
+          import click
+          import requests
+
+
+          @click.command()
+          def publish():
+              """Publish the digest."""
+              requests.post("https://example.test/hook")
+          PY
+          /tmp/clean/bin/r2s extract smoke --out smoke-out
+          /tmp/clean/bin/r2s validate smoke-out/inventory.draft.json || true
+          test -f smoke-out/inventory.draft.json
+
+  design-gates:
+    name: design gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+
+      - name: Every harness profile loads and its capability IDs are known
+        run: python -m r2s profiles
+
+      - name: Fixtures validate against the schema and vocabulary
+        run: |
+          python -m r2s validate fixtures/agent-system/youtube-automation/expected/inventory.json
+
+      # `convert` exits non-zero when an invariant fails, so this needs no output
+      # parsing: the shell already gates on it.
+      - name: Gate-survival invariants I1-I7 hold on every profile
+        run: |
+          python -m r2s convert \
+            fixtures/agent-system/youtube-automation/expected/inventory.json --all
+
+      - name: Extraction is deterministic on the cli-tool fixture
+        run: |
+          python -m r2s extract fixtures/cli-tool/feed-sync --out /tmp/run-a
+          python -m r2s extract fixtures/cli-tool/feed-sync --out /tmp/run-b
+          diff /tmp/run-a/inventory.draft.json /tmp/run-b/inventory.draft.json
+
+  lint:
+    name: lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      - run: ruff check src tests
+      - run: ruff format --check src tests
+      - run: mypy

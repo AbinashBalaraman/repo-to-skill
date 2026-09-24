@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose a new dialect, capability, harness profile, or behaviour.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two kinds of request are especially welcome and have a clear shape:
+        **a new T0 dialect** (a declaration family the extractor does not recognise yet)
+        and **a new provider catalog entry** (a package that should map to capabilities).
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of change is this?
+      options:
+        - new extraction dialect
+        - new provider catalog entry
+        - new harness profile
+        - new capability in the vocabulary
+        - routing or gate behaviour
+        - emitter / output
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve
+      description: Describe the repo or harness that exposes the gap.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: |
+        For a dialect: which declaration shape should be recognised, and where does it live?
+        For a catalog entry: which package, and which capabilities does it imply?
+        For a capability: is it probeable by a harness profile, and coarse enough to be one tool?
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example repository or package
+      description: A public repo that would exercise this, ideally small.
+    validations:
+      required: false

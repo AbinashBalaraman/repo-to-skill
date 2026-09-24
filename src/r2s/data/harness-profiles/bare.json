@@ -1,0 +1,15 @@
+{
+  "id": "bare",
+  "name": "Bare harness",
+  "desc": "Minimal CLI agent: text, files, shell, FFmpeg. No image, video or audio generation, no network.",
+  "native": [
+    "text.generate", "text.summarize", "text.classify", "text.extract",
+    "file.read", "file.write", "file.list",
+    "shell.exec", "code.exec", "validate.schema",
+    "media.assemble", "media.probe", "format.render"
+  ],
+  "mcp": [],
+  "probe": null,
+  "expiry": null,
+  "notes": "FFmpeg assumed present, which is why visual gaps degrade to stand-ins rather than blocking. No network, so every access capability is absent."
+}

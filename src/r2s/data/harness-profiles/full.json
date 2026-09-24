@@ -1,0 +1,24 @@
+{
+  "id": "full",
+  "name": "Upper bound",
+  "desc": "Everything available natively. A comparison baseline, not a realistic target.",
+  "native": [
+    "text.generate", "text.summarize", "text.classify", "text.extract",
+    "image.generate", "image.edit", "video.generate", "video.edit",
+    "audio.tts", "audio.transcribe", "ml.train", "ml.infer",
+    "media.assemble", "media.probe", "format.render",
+    "file.read", "file.write", "file.list",
+    "shell.exec", "code.exec", "validate.schema", "git.op",
+    "http.request", "web.search", "web.fetch", "browser.automate", "external.call",
+    "secret.oauth", "secret.apikey", "secret.read",
+    "data.query", "data.write", "db.migrate", "storage.object",
+    "cache.read", "cache.write", "queue.publish", "queue.consume",
+    "vector.search", "search.index", "payment.charge", "notify.message",
+    "schedule.cron", "container.op", "deploy.op",
+    "human.decide", "human.review"
+  ],
+  "mcp": [],
+  "probe": null,
+  "expiry": null,
+  "notes": "No operation should route to script, ask-user or drop here except where it genuinely needs a secret or a human decision."
+}

@@ -1,0 +1,20 @@
+{
+  "id": "workbuddy",
+  "name": "Multimodal harness",
+  "desc": "Text plus native image and video generation, web search, files and shell.",
+  "native": [
+    "text.generate", "text.summarize", "text.classify", "text.extract",
+    "image.generate", "video.generate",
+    "file.read", "file.write", "file.list",
+    "shell.exec", "code.exec", "validate.schema",
+    "media.assemble", "media.probe", "format.render",
+    "web.search", "web.fetch",
+    "human.decide", "human.review"
+  ],
+  "mcp": [
+    "audio.tts", "http.request", "secret.oauth"
+  ],
+  "probe": null,
+  "expiry": null,
+  "notes": "Visual generation is native, so thumbnails and scenes need no stand-in. Narration still depends on an attached TTS server or a user-supplied key."
+}
