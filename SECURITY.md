@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Report privately through GitHub Security Advisories:
-**https://github.com/abinashbalaraman/repo-to-skill/security/advisories/new**
+**https://github.com/AbinashBalaraman/repo-to-skill/security/advisories/new**
 
 Please do not open a public issue for a security problem.
 

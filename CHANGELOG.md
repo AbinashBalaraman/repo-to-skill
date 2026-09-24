@@ -129,5 +129,5 @@ Extraction is Python-first; MCP synthesis and the emitter are not built.
 - Unknown capability IDs were silently treated as "missing" and routed to `ask-user` or
   `drop`, hiding converter bugs as capability gaps. They are now hard errors.
 
-[Unreleased]: https://github.com/abinashbalaraman/repo-to-skill/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/abinashbalaraman/repo-to-skill/releases/tag/v0.1.0
+[Unreleased]: https://github.com/AbinashBalaraman/repo-to-skill/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/AbinashBalaraman/repo-to-skill/releases/tag/v0.1.0

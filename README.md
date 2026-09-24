@@ -1,6 +1,6 @@
 # repo-to-skill
 
-[![CI](https://github.com/abinashbalaraman/repo-to-skill/actions/workflows/ci.yml/badge.svg)](https://github.com/abinashbalaraman/repo-to-skill/actions/workflows/ci.yml)
+[![CI](https://github.com/AbinashBalaraman/repo-to-skill/actions/workflows/ci.yml/badge.svg)](https://github.com/AbinashBalaraman/repo-to-skill/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](pyproject.toml)

@@ -8,7 +8,7 @@ you time.
 No runtime dependencies. Python 3.10+.
 
 ```bash
-git clone https://github.com/abinashbalaraman/repo-to-skill
+git clone https://github.com/AbinashBalaraman/repo-to-skill
 cd r2s
 python -m pip install -e ".[dev]"
 ```

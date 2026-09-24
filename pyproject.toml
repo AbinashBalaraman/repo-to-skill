@@ -36,10 +36,10 @@ dev = ["ruff>=0.5", "mypy>=1.10", "build>=1.2"]
 r2s = "r2s.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/abinashbalaraman/repo-to-skill"
-Repository = "https://github.com/abinashbalaraman/repo-to-skill"
-Issues = "https://github.com/abinashbalaraman/repo-to-skill/issues"
-Changelog = "https://github.com/abinashbalaraman/repo-to-skill/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/AbinashBalaraman/repo-to-skill"
+Repository = "https://github.com/AbinashBalaraman/repo-to-skill"
+Issues = "https://github.com/AbinashBalaraman/repo-to-skill/issues"
+Changelog = "https://github.com/AbinashBalaraman/repo-to-skill/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
