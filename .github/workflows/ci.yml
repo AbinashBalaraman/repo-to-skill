@@ -138,6 +138,19 @@ jobs:
           python -m r2s extract fixtures/cli-tool/feed-sync --out /tmp/run-b
           diff /tmp/run-a/inventory.draft.json /tmp/run-b/inventory.draft.json
 
+  eval:
+    name: eval (L1-L5)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      # Exits non-zero on any failure. L3/L4 emit a real skill and inspect it, rather
+      # than skipping when nobody has run `convert --emit` recently.
+      - run: python -m eval
+
   lint:
     name: lint and types
     runs-on: ubuntu-latest

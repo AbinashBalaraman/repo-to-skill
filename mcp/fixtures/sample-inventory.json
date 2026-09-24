@@ -1,0 +1,136 @@
+{
+  "schema_version": "1.0.0",
+  "source": {
+    "kind": "local",
+    "url": null,
+    "sha": "0000000000000000000000000000000000000000",
+    "subdir": null,
+    "license": "none"
+  },
+  "repo_class": "agent-system",
+  "repo_class_confidence": "high",
+  "profile": null,
+  "inventory_status": "reviewed",
+  "extraction": {
+    "converter_version": "0.1.0",
+    "catalog_version": "0.1.0",
+    "generated_at": null,
+    "sources_run": ["T0", "T1", "T2", "T3"],
+    "truncated": false
+  },
+  "operations": [
+    {
+      "id": "fetch-trends",
+      "name": "Fetch trends",
+      "stage": "acquire",
+      "effect": "read-external",
+      "requires": ["web.search"],
+      "optional": false,
+      "deterministic": false,
+      "gate": [],
+      "confidence": "medium",
+      "stand_in": "reasoning-without-sources",
+      "trigger": "manual",
+      "credentials": [
+        { "name": "TRENDS_API_KEY", "kind": "apikey", "env": "TRENDS_API_KEY" }
+      ],
+      "evidence": [
+        { "source": "declared", "loc": "src/pipeline.py:12", "detail": "fetch_trends()" }
+      ],
+      "notes": "Hand-authored spike fixture, not produced by `r2s extract`."
+    },
+    {
+      "id": "gen-scene-visuals",
+      "name": "Generate scene visuals",
+      "stage": "transform",
+      "effect": "effectful-external",
+      "requires": ["image.generate"],
+      "optional": false,
+      "deterministic": false,
+      "gate": [],
+      "confidence": "medium",
+      "stand_in": "gradient-card-1080p",
+      "trigger": "manual",
+      "credentials": [],
+      "evidence": [
+        { "source": "declared", "loc": "src/pipeline.py:40", "detail": "gen_scene_visuals()" }
+      ],
+      "notes": "Hand-authored spike fixture, not produced by `r2s extract`."
+    },
+    {
+      "id": "caption-audio",
+      "name": "Caption audio",
+      "stage": "transform",
+      "effect": "effectful-external",
+      "requires": ["audio.transcribe"],
+      "optional": false,
+      "deterministic": false,
+      "gate": [],
+      "confidence": "medium",
+      "stand_in": "srt-from-text",
+      "trigger": "manual",
+      "credentials": [],
+      "evidence": [
+        { "source": "declared", "loc": "src/pipeline.py:61", "detail": "caption_audio()" }
+      ],
+      "notes": "Hand-authored spike fixture, not produced by `r2s extract`."
+    },
+    {
+      "id": "gen-narration",
+      "name": "Generate narration",
+      "stage": "transform",
+      "effect": "effectful-external",
+      "requires": ["audio.tts"],
+      "optional": false,
+      "deterministic": false,
+      "gate": [],
+      "confidence": "medium",
+      "stand_in": null,
+      "trigger": "manual",
+      "credentials": [],
+      "evidence": [
+        { "source": "declared", "loc": "src/pipeline.py:55", "detail": "gen_narration()" }
+      ],
+      "notes": "No honest stand-in exists for audio.tts, so this halts at ask-user. Included to show the server does not expose it."
+    },
+    {
+      "id": "assemble-video",
+      "name": "Assemble video",
+      "stage": "transform",
+      "effect": "effectful-local",
+      "requires": ["media.assemble"],
+      "optional": false,
+      "deterministic": true,
+      "gate": [],
+      "confidence": "high",
+      "stand_in": "ken-burns-still",
+      "trigger": "manual",
+      "credentials": [],
+      "evidence": [
+        { "source": "declared", "loc": "src/pipeline.py:72", "detail": "assemble_video()" }
+      ],
+      "notes": "media.assemble is native on the bare profile, so this routes native, not script. Included to show the server exposes only script-bound operations."
+    },
+    {
+      "id": "upload-video",
+      "name": "Upload video",
+      "stage": "deliver",
+      "effect": "effectful-external",
+      "requires": ["http.request", "secret.oauth"],
+      "optional": false,
+      "deterministic": false,
+      "gate": ["publish", "irreversible", "privacy"],
+      "gate_confidence": "low",
+      "confidence": "medium",
+      "stand_in": null,
+      "trigger": "manual",
+      "credentials": [
+        { "name": "YOUTUBE_TOKEN", "kind": "oauth", "env": "YOUTUBE_TOKEN" }
+      ],
+      "evidence": [
+        { "source": "declared", "loc": "src/pipeline.py:90", "detail": "upload_video()" }
+      ],
+      "notes": "Halts at ask-user on the bare profile with its gates deferred into the question."
+    }
+  ]
+}

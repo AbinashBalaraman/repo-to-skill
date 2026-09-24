@@ -343,10 +343,36 @@ class TestEffectMatcher(unittest.TestCase):
         pattern = self.match("select(Entry)")
         self.assertEqual(pattern["capability"], "data.query")
 
-    def test_execute_alone_is_ambiguous_and_unmatched(self):
-        """execute(select(...)) used to be misread as a write."""
-        pattern = self.match("session.execute(stmt)")
-        self.assertIsNone(pattern, "bare execute is ambiguous and must not match")
+    def test_execute_is_ambiguous_and_only_matched_when_it_reads(self):
+        """`session.execute` runs a SELECT as happily as a DELETE.
+
+        Treating it as a read would be fail-open: a DELETE would be reported as
+        read-only and lose its gate, which is the exact failure this project exists to
+        prevent. So it is matched only when the argument is recognisably a read.
+        """
+        # Recognisably reads -> matched as a read.
+        for source in (
+            "session.execute(select(Entry))",
+            'session.execute("select 1")',
+            'conn.execute("SELECT * FROM t")',
+        ):
+            with self.subTest(source=source):
+                pattern = self.match(source)
+                self.assertIsNotNone(pattern, source)
+                self.assertEqual(pattern["capability"], "data.query")
+                self.assertEqual(pattern["effect"], "read-external")
+
+        # Genuinely ambiguous or clearly a write -> left unmatched for review.
+        for source in (
+            "session.execute(stmt)",
+            'session.execute("DELETE FROM t")',
+            'session.execute("update t set x=1")',
+        ):
+            with self.subTest(source=source):
+                self.assertIsNone(
+                    self.match(source),
+                    f"ambiguous execute must not be guessed at: {source}",
+                )
 
 
 class TestPhases(unittest.TestCase):

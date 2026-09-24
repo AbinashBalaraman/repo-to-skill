@@ -14,19 +14,65 @@ Because a release changes the emitted artifact and the vocabulary, note that:
 
 ## [Unreleased]
 
-### Not yet built
+### Added
 
-These are planned, not shipped. They were previously listed under "Added", which
-implied they existed.
+- **The emitter (M6).** `r2s convert --emit <dir>` writes an Agent Skills package:
+  `SKILL.md` plus `references/{bindings,degradation,blocked,gates}.md`. It refuses to
+  emit from a draft inventory unless `--accept-unreviewed` is passed, in which case the
+  status is stamped into the skill and every low-confidence operation is flagged inside
+  it. It also runs the spec check and the secret scan on what it just wrote, rather
+  than trusting the writer.
+- **I7's emitter half.** `blocked.md` generates a question per halted operation that
+  surfaces every deferred gate by name, and the emitter asserts it via
+  `invariants.check_deferred_questions`. Previously the invariant existed but nothing
+  produced the questions it checks.
+- **Twelve extraction dialects (M2 completion).** Python CLI, Python and JS web routes,
+  OpenAPI, protobuf services, GitHub Actions, Make targets, package scripts,
+  docker-compose, systemd units, cron, orchestrators (Airflow/Prefect/Dagster), agent
+  tool registries, and Terraform/K8s/Ansible. Config-only and IaC repos are now
+  extractable: their declarations *are* the operations.
+- **T4 LLM gap-fill** (`extract/gapfill.py`), off by default, consuming a structured
+  digest of T0–T3 output rather than a whole-repo dump, always `confidence: low`, never
+  auto-accepted.
+- **The eval harness** (`python -m eval`), runnable as a CI gate and exiting non-zero
+  on failure. L1 invariants, L2 behavioural, L3 secret scan, L4 spec validation, L5
+  determinism. A layer with no input reports `skipped`, not `pass`.
+- **L3 secret-leak scanner** (`validate/secrets.py`, `r2s scan`). Detects OpenAI/Stripe
+  `sk-*`, AWS `AKIA*`, GitHub `ghp_*`, Slack `xox*`, Google `AIza*`, JWTs, PEM private
+  key blocks, SendGrid, Twilio and generic `token=`/`password=` assignments. It never
+  prints the credential — a report that echoes the secret is its own leak.
+- **L4 Agent Skills spec validation** (`validate/spec.py`), including a check that the
+  skill declares its own capability profile.
+- **The meta-skill** (`SKILL.md` at the repo root) that drives the CLI from inside a
+  harness.
+- **An MCP synthesis spike** (`mcp/server.py`) — a real stdio JSON-RPC server exposing
+  one tool per stand-in-backed operation. It does not execute; see Known limits.
 
-- Emitter for the output contract: `SKILL.md` plus `references/{bindings,degradation,blocked,gates}.md` (M6)
-- Secret-leak scanner over the emitted package (L3)
-- Spec conformance and budget validation via `skills-ref validate` (L4)
-- SHA-diff stability check (L5)
-- MCP synthesis spike (M8)
-- Meta-skill frontend that drives the CLI from inside a harness (M7)
-- Remaining extraction dialects and non-Python effect tracing (M4)
-- T4 LLM gap-fill
+### Known limits
+
+- **The MCP server does not execute.** A catalog stand-in is a curated *description*
+  with declared fidelity, not a runnable script, so `tools/call` returns the routing
+  decision with `executed: false`. Making it real needs executable stand-ins, codegen,
+  and a decision on the SDK-versus-zero-dependency trade-off.
+- **Extraction breadth is incomplete.** Rust, Go and Java declaration sites are not
+  covered. Effect tracing remains Python-only via stdlib `ast`.
+- **T4 is unproven.** It exists and is off by default; it has not been validated against
+  a gold standard.
+
+### Fixed
+
+- **`session.execute(...)` was guessable in the wrong direction.** It was briefly mapped
+  to `data.query`, which would have reported a `DELETE` as read-only and let it lose its
+  gate — fail-*open* in a fail-closed design. It is now matched only when the argument
+  is recognisably a read (`execute("select ...")`, `execute(select(...))`); anything
+  else is left unmatched and surfaces for review.
+- **`stripe.Charge.create(...)` and similar resource-style calls were not traced.**
+  Added receiver-scoped patterns, so a payment call is now reported as `payment.charge`
+  rather than falling through to the `external.call` placeholder.
+- **The L3 scanner leaked the credential in its own report.** The excerpt appended a
+  mask *after* the first 40 characters of the line, so a secret appearing early was
+  printed in full. It now masks the matched span in place. Caught by the scanner's own
+  test, which is why that test exists.
 
 ### Security
 

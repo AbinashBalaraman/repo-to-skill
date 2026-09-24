@@ -15,10 +15,40 @@ from . import coalesce as coalesce_mod
 from . import confidence as confidence_mod
 from . import docs as docs_mod
 from . import effects as effects_mod
+from . import gapfill as gapfill_mod
 from . import phases
 from .dialects import registry as dialect_registry
 
 GENERATIVE = "generative"
+
+# Extensions T1 can trace at full fidelity. Anything else gets T0/T2 quality, and the
+# diagnostics say so, because "any repo" must not be read as "any language traced".
+_TRACEABLE_SUFFIXES = (".py",)
+_CODE_SUFFIXES = (
+    ".py",
+    ".js",
+    ".mjs",
+    ".cjs",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".go",
+    ".rs",
+    ".rb",
+    ".java",
+    ".kt",
+    ".cs",
+    ".php",
+    ".swift",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".scala",
+    ".ex",
+    ".exs",
+)
 
 _EFFECT_RANK = {
     "read-local": 0,
@@ -28,8 +58,23 @@ _EFFECT_RANK = {
 }
 
 
-def extract(snapshot, profile_result, vocab, providers, effects_catalog, standins, source=None):
-    """Run every evidence source and return (draft_inventory, warnings)."""
+def extract(
+    snapshot,
+    profile_result,
+    vocab,
+    providers,
+    effects_catalog,
+    standins,
+    source=None,
+    llm_proposals=None,
+):
+    """Run every evidence source and return (draft_inventory, warnings).
+
+    `llm_proposals` is the T4 hook. It is off by default: pass a path to a proposals
+    file and each proposal is applied as `proposed` evidence at LOW confidence with a
+    review note, never auto-accepted. The converter itself never calls a model -- see
+    `extract/gapfill.py` for the contract.
+    """
     warnings = []
     source = source or {}
 
@@ -42,10 +87,18 @@ def extract(snapshot, profile_result, vocab, providers, effects_catalog, standin
 
     # ---- T1: traced effects
     sites = effects_mod.trace(snapshot, profile_result.entrypoints, effects_catalog)
+    tracing = _tracing_fidelity(snapshot, sites)
     if not sites:
         warnings.append(
             "no effect sites were traced; requirements will rest on declaration and "
             "dependency evidence alone"
+        )
+    elif tracing["non_python_code_files"]:
+        warnings.append(
+            f"{tracing['non_python_code_files']} non-Python code file(s) were not effect "
+            f"traced (T1 is stdlib-ast and Python-only); their operations carry T0 "
+            f"declaration and T2 catalog evidence only, so their requirements are "
+            f"weaker than a traced operation's"
         )
 
     # ---- T2: provider catalog
@@ -62,8 +115,9 @@ def extract(snapshot, profile_result, vocab, providers, effects_catalog, standin
 
     # ---- attribute
     unattributed = []
+    unattributed_gates = []
     if candidates:
-        operations, unattributed = _operations_from_candidates(
+        operations, unattributed, unattributed_gates = _operations_from_candidates(
             candidates, sites, matches, gate_signals, optional_signals, vocab, standins
         )
     else:
@@ -90,6 +144,15 @@ def extract(snapshot, profile_result, vocab, providers, effects_catalog, standin
             f"all of them, which would have reported false confidence."
         )
 
+    if unattributed_gates:
+        warnings.append(
+            f"{len(unattributed_gates)} gate signal(s) in the documentation named no "
+            f"operation, so they were not attributed to one: "
+            f"{_gate_locations(unattributed_gates)}. They are reported here rather than "
+            f"smeared across the inventory, which would have gated operations the "
+            f"documentation never described."
+        )
+
     # ---- unresolved dependencies become one reviewable operation, never silence
     if unknown:
         operations.append(_unresolved_operation(unknown, vocab, standins))
@@ -97,6 +160,14 @@ def extract(snapshot, profile_result, vocab, providers, effects_catalog, standin
     operations = [op for op in operations if op is not None]
     operations, coalesce_notes = coalesce_mod.coalesce(operations, profile_result.repo_class)
     warnings.extend(coalesce_notes)
+
+    # ---- T4: proposals are applied last, at LOW confidence, never auto-accepted
+    t4_ran = False
+    if llm_proposals is not None:
+        proposals = gapfill_mod.load_proposals(llm_proposals)
+        operations, gapfill_notes = gapfill_mod.apply(operations, proposals, vocab)
+        warnings.extend(gapfill_notes)
+        t4_ran = bool(proposals)
 
     # Strip internal bookkeeping so the emitted artifact matches the schema exactly.
     # (`_order` used to be left on every operation, which both leaked an internal field
@@ -117,7 +188,7 @@ def extract(snapshot, profile_result, vocab, providers, effects_catalog, standin
             "converter_version": config.CONVERTER_VERSION,
             "catalog_version": providers.version,
             "generated_at": None,
-            "sources_run": _sources_run(dialects_ran, sites, matches, gate_signals),
+            "sources_run": _sources_run(dialects_ran, sites, matches, gate_signals, t4_ran),
             "truncated": snapshot.truncated,
         },
         "profile": None,
@@ -129,13 +200,55 @@ def extract(snapshot, profile_result, vocab, providers, effects_catalog, standin
             "providers_matched": [m.id for m in matches],
             "unresolved_dependencies": [f"{eco}:{name}" for eco, name in unknown],
             "doc_gate_signals": len(gate_signals),
+            "unattributed_gate_signals": [
+                {"gate": s.gate, "loc": s.loc} for s in unattributed_gates
+            ],
             "class_evidence": [list(e) for e in profile_result.class_evidence],
+            # How much to trust requirement attribution in this inventory. T1 is
+            # high-fidelity only for Python; other languages are declaration-only, and
+            # saying so here is cheaper than letting a user over-trust the draft.
+            "tracing": tracing,
         },
     }
     return draft, warnings
 
 
-def _sources_run(dialects_ran, sites, matches, gate_signals):
+def _tracing_fidelity(snapshot, sites):
+    """Describe, honestly, what effect tracing could and could not see."""
+    code_files = [f for f in snapshot.files if f.endswith(_CODE_SUFFIXES)]
+    traceable = [f for f in code_files if f.endswith(_TRACEABLE_SUFFIXES)]
+    other = [f for f in code_files if not f.endswith(_TRACEABLE_SUFFIXES)]
+    languages = sorted({f.rsplit(".", 1)[-1] for f in other})
+    if not code_files:
+        fidelity = "none"
+    elif not other:
+        fidelity = "high"
+    else:
+        fidelity = "partial"
+    return {
+        "language": "python",
+        "fidelity": fidelity,
+        "python_code_files": len(traceable),
+        "non_python_code_files": len(other),
+        "non_python_languages": languages,
+        "effect_sites": len(sites),
+        "note": (
+            "T1 traces effect sites by stdlib ast over Python only. Operations declared "
+            "in other languages, or in config and infrastructure files, carry T0 "
+            "declaration and T2 catalog evidence; their requirements are not traced."
+        ),
+    }
+
+
+def _gate_locations(signals, limit=5):
+    """Gate names and locations only. The matched line is never emitted."""
+    rendered = [f"{s.gate} at {s.loc}" for s in signals[:limit]]
+    if len(signals) > limit:
+        rendered.append(f"and {len(signals) - limit} more")
+    return ", ".join(rendered)
+
+
+def _sources_run(dialects_ran, sites, matches, gate_signals, t4_ran=False):
     ran = []
     if dialects_ran:
         ran.append("T0")
@@ -145,6 +258,8 @@ def _sources_run(dialects_ran, sites, matches, gate_signals):
         ran.append("T2")
     if gate_signals:
         ran.append("T3")
+    if t4_ran:
+        ran.append("T4")
     return ran
 
 
@@ -214,6 +329,12 @@ def _operations_from_candidates(
     candidates, sites, matches, gate_signals, optional_signals, vocab, standins
 ):
     claims, weak, unattributed = _claim_sites(candidates, sites)
+    # Gate language is attributed once, across the whole candidate set, so a gate can
+    # find the operation it names instead of being copied onto every operation that
+    # happens to share a word with it.
+    doc_map, unattributed_gates = docs_mod.associate(
+        [(c.op_id, c.name) for c in candidates], gate_signals
+    )
     operations = []
     for candidate in candidates:
         claimed = claims.get(candidate.op_id, [])
@@ -222,30 +343,39 @@ def _operations_from_candidates(
                 candidate,
                 claimed,
                 matches,
-                gate_signals,
+                doc_map.get(candidate.op_id, []),
                 optional_signals,
                 vocab,
                 standins,
                 weak_attribution=candidate.op_id in weak,
             )
         )
-    return operations, unattributed
+    return operations, unattributed, unattributed_gates
 
 
 def _build_operation(
     candidate,
     sites,
     matches,
-    gate_signals,
+    doc_hits,
     optional_signals,
     vocab,
     standins,
     weak_attribution=False,
 ):
     traced_caps = sorted({s.capability for s in sites})
-    effect = _dominant_effect(sites)
+    declared_caps = sorted(set(candidate.capabilities or []))
+    effect = _dominant_effect(sites) if sites else (candidate.effect_hint or "effectful-external")
 
     evidence = [candidate.evidence()] + [s.evidence() for s in sites]
+    if declared_caps:
+        evidence.append(
+            {
+                "source": "declared",
+                "loc": candidate.loc,
+                "detail": f"declaration asserts: {', '.join(declared_caps)}",
+            }
+        )
 
     provider_hits = (
         [m for m in matches if set(m.capabilities) & set(traced_caps)] if traced_caps else []
@@ -253,7 +383,7 @@ def _build_operation(
     for match in provider_hits:
         evidence.append(match.evidence())
 
-    requires = list(traced_caps)
+    requires = sorted(set(traced_caps) | set(declared_caps))
     ambiguous = any(m.ambiguous for m in provider_hits)
     corroboration = len({m.id for m in provider_hits})
 
@@ -271,11 +401,10 @@ def _build_operation(
         )
         ambiguous = True
 
-    # Gates: provider hints plus documentation language that shares vocabulary.
+    # Gates: provider hints plus documentation language that names this operation.
     gate_set = []
     for match in provider_hits:
         gate_set.extend(match.gate_hints)
-    doc_hits = docs_mod.gates_for_operation(candidate.name, candidate.detail, gate_signals)
     for hit in doc_hits:
         gate_set.append(hit.gate)
         evidence.append(hit.evidence())
@@ -292,6 +421,13 @@ def _build_operation(
         ambiguous=ambiguous,
         weak_attribution=weak_attribution,
     )
+    # A capability read off a declaration is a mapping, not a traced call. It is
+    # honest evidence, but not the same grade as an observed call site, so it does not
+    # earn HIGH on its own.
+    if declared_caps and not sites and confidence == confidence_mod.HIGH:
+        confidence = confidence_mod.MEDIUM
+        notes = [*notes, "capabilities come from declaration sites, not traced effects"]
+
     gate_confidence = (
         confidence_mod.MEDIUM
         if any(m.gate_hints for m in provider_hits)
@@ -314,7 +450,7 @@ def _build_operation(
         "summary": candidate.detail,
         "credentials": _credentials(provider_hits),
         "stand_in": _standin_for(requires, standins),
-        "trigger": "manual",
+        "trigger": candidate.trigger,
         "entrypoint": {"kind": candidate.declaration_kind, "loc": candidate.loc},
         "notes": "; ".join(notes) if notes else "",
     }

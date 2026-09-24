@@ -67,15 +67,20 @@ ID in a provider entry is a hard error rather than a silent widening of a requir
 Stated plainly, because a security policy that overstates its coverage is worse than one
 that admits limits.
 
-- **There is no secret-leak scanner over the emitted package.** The eval layer that
-  would scan the final skill for leaked credentials (L3) is specified and not built.
-  The controls above are exclusion and redaction, not detection.
-- **Redaction is pattern-based.** An unusual credential format will not be caught by
-  `redact()`. The primary control is that raw repository text is not emitted at all.
-- **The emitter does not exist yet.** No skill package is produced, so the artifact most
-  likely to leak has not yet been built. This must be revisited when M6 lands — the
-  emitted `references/` files will contain repository-derived prose and will need their
-  own scan.
+- **The L3 secret scanner detects; it does not prevent.** `r2s scan <skill-dir>` and the
+  L3 eval layer check an emitted package for credential-shaped strings, and the emitter
+  runs the scan on what it just wrote. The controls that *prevent* leakage are upstream:
+  credential files are never read, and raw repository text is never carried into
+  evidence.
+- **Redaction and detection are both pattern-based.** An unusual credential format will
+  be caught by neither. The primary control remains that raw repository text is not
+  emitted at all.
+- **The emitter writes repository-derived prose into `references/`.** That path is new
+  and is the most likely place for a leak to appear. It is scanned on emission and in
+  CI, but the scan is only as good as its patterns.
+- **The MCP server does not execute and holds no secrets.** `mcp/server.py` returns
+  routing decisions; credentials are read from the environment and never logged. It is
+  a spike and has not been security-reviewed.
 - **`--catalog-extra` is not sandboxed.** Catalog data is validated for schema
   conformance and capability validity, but a catalog is trusted input: do not point it
   at a file you would not otherwise run.

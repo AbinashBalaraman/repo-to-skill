@@ -105,6 +105,18 @@
       "effect": "effectful-external"
     },
     {
+      "id": "payment-resource",
+      "match": { "module": ["stripe", "payment", "payments", "billing", "charge", "charges"], "func": ["create", "capture", "refund", "retrieve", "update"] },
+      "capability": "payment.charge",
+      "effect": "effectful-external"
+    },
+    {
+      "id": "db-execute-read",
+      "match": { "module": ["session", "cursor", "conn", "connection", "db", "engine"], "func": ["execute", "executemany"], "arg0_read": true },
+      "capability": "data.query",
+      "effect": "read-external"
+    },
+    {
       "id": "notify",
       "match": { "func": ["sendmail", "send_email", "send_sms", "sendgrid_send", "messages_create"] },
       "capability": "notify.message",

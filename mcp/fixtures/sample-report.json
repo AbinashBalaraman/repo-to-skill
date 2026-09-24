@@ -1,0 +1,256 @@
+{
+  "invariants": {
+    "failures": [],
+    "passed": true
+  },
+  "inventory_status": "reviewed",
+  "profile": {
+    "id": "bare",
+    "mcp": [],
+    "name": "Bare harness",
+    "native": [
+      "text.generate",
+      "text.summarize",
+      "text.classify",
+      "text.extract",
+      "file.read",
+      "file.write",
+      "file.list",
+      "shell.exec",
+      "code.exec",
+      "validate.schema",
+      "media.assemble",
+      "media.probe",
+      "format.render"
+    ]
+  },
+  "repo_class": "agent-system",
+  "rows": [
+    {
+      "binding": "script",
+      "confidence": "medium",
+      "coverage": 0.5,
+      "credentials": [
+        {
+          "env": "TRENDS_API_KEY",
+          "kind": "apikey",
+          "name": "TRENDS_API_KEY"
+        }
+      ],
+      "deferred_gates": [],
+      "deterministic": false,
+      "effect": "read-external",
+      "gates": [],
+      "id": "fetch-trends",
+      "missing": [
+        "web.search"
+      ],
+      "name": "Fetch trends",
+      "optional": false,
+      "requires": [
+        "web.search"
+      ],
+      "stage": "acquire",
+      "stand_in": "reasoning-without-sources",
+      "stand_in_detail": {
+        "capability": "text.generate",
+        "caveat": "No citations and no freshness. Must be labelled as unsourced in the output.",
+        "desc": "Reason about the subject from model knowledge alone, with no live sources",
+        "fidelity": 0.5,
+        "id": "reasoning-without-sources",
+        "type": "reducing"
+      }
+    },
+    {
+      "binding": "script",
+      "confidence": "medium",
+      "coverage": 0.25,
+      "credentials": [],
+      "deferred_gates": [],
+      "deterministic": false,
+      "effect": "effectful-external",
+      "gates": [],
+      "id": "gen-scene-visuals",
+      "missing": [
+        "image.generate"
+      ],
+      "name": "Generate scene visuals",
+      "optional": false,
+      "requires": [
+        "image.generate"
+      ],
+      "stage": "transform",
+      "stand_in": "gradient-card-1080p",
+      "stand_in_detail": {
+        "capability": "media.assemble",
+        "caveat": "Output looks like a slideshow, not footage. Suitable only where motion is decorative.",
+        "desc": "Render the scene's title text on a solid gradient card at 1920x1080 via FFmpeg",
+        "fidelity": 0.25,
+        "id": "gradient-card-1080p",
+        "type": "reducing"
+      }
+    },
+    {
+      "binding": "script",
+      "confidence": "medium",
+      "coverage": 0.6,
+      "credentials": [],
+      "deferred_gates": [],
+      "deterministic": false,
+      "effect": "effectful-external",
+      "gates": [],
+      "id": "caption-audio",
+      "missing": [
+        "audio.transcribe"
+      ],
+      "name": "Caption audio",
+      "optional": false,
+      "requires": [
+        "audio.transcribe"
+      ],
+      "stage": "transform",
+      "stand_in": "srt-from-text",
+      "stand_in_detail": {
+        "capability": "file.write",
+        "caveat": "Timings are estimated, not measured, so captions drift from the audio.",
+        "desc": "Derive an SRT from the script text using per-scene timing estimates",
+        "fidelity": 0.6,
+        "id": "srt-from-text",
+        "type": "reducing"
+      }
+    },
+    {
+      "binding": "ask-user",
+      "confidence": "medium",
+      "coverage": 0.5,
+      "credentials": [],
+      "deferred_gates": [],
+      "deterministic": false,
+      "effect": "effectful-external",
+      "gates": [],
+      "id": "gen-narration",
+      "missing": [
+        "audio.tts"
+      ],
+      "name": "Generate narration",
+      "optional": false,
+      "requires": [
+        "audio.tts"
+      ],
+      "stage": "transform",
+      "stand_in": null,
+      "stand_in_detail": null
+    },
+    {
+      "binding": "native",
+      "confidence": "high",
+      "coverage": 1.0,
+      "credentials": [],
+      "deferred_gates": [],
+      "deterministic": true,
+      "effect": "effectful-local",
+      "gates": [],
+      "id": "assemble-video",
+      "missing": [],
+      "name": "Assemble video",
+      "optional": false,
+      "requires": [
+        "media.assemble"
+      ],
+      "stage": "transform",
+      "stand_in": null,
+      "stand_in_detail": null
+    },
+    {
+      "binding": "ask-user",
+      "confidence": "medium",
+      "coverage": 0.5,
+      "credentials": [
+        {
+          "env": "YOUTUBE_TOKEN",
+          "kind": "oauth",
+          "name": "YOUTUBE_TOKEN"
+        }
+      ],
+      "deferred_gates": [
+        "publish",
+        "irreversible",
+        "privacy"
+      ],
+      "deterministic": false,
+      "effect": "effectful-external",
+      "gates": [],
+      "id": "upload-video",
+      "missing": [
+        "http.request",
+        "secret.oauth"
+      ],
+      "name": "Upload video",
+      "optional": false,
+      "requires": [
+        "http.request",
+        "secret.oauth"
+      ],
+      "stage": "deliver",
+      "stand_in": null,
+      "stand_in_detail": null
+    }
+  ],
+  "schema_version": "1.0.0",
+  "source": {
+    "kind": "local",
+    "license": "none",
+    "sha": "0000000000000000000000000000000000000000",
+    "subdir": null,
+    "url": null
+  },
+  "summary": {
+    "all_required_operations_executable": false,
+    "bindings": {
+      "ask-user": 2,
+      "drop": 0,
+      "mcp": 0,
+      "native": 1,
+      "script": 3
+    },
+    "coverage": 0.558,
+    "deferred_gates": [
+      "irreversible",
+      "privacy",
+      "publish"
+    ],
+    "degraded": [
+      {
+        "fidelity": 0.5,
+        "id": "fetch-trends",
+        "instead": "Reason about the subject from model knowledge alone, with no live sources",
+        "stand_in": "reasoning-without-sources"
+      },
+      {
+        "fidelity": 0.25,
+        "id": "gen-scene-visuals",
+        "instead": "Render the scene's title text on a solid gradient card at 1920x1080 via FFmpeg",
+        "stand_in": "gradient-card-1080p"
+      },
+      {
+        "fidelity": 0.6,
+        "id": "caption-audio",
+        "instead": "Derive an SRT from the script text using per-scene timing estimates",
+        "stand_in": "srt-from-text"
+      }
+    ],
+    "gate_count": 0,
+    "gates": [],
+    "halted": [
+      "gen-narration",
+      "upload-video"
+    ],
+    "halted_optional": [],
+    "lost": [],
+    "lost_optional": [],
+    "operations": 6,
+    "optional": 0,
+    "required": 6
+  },
+  "warnings": []
+}

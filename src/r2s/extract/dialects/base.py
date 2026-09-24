@@ -29,6 +29,15 @@ class Candidate:
     # declaration with no enclosing function (an argparse subparser, for instance) has
     # none, which is why attribution for those is flagged as weak.
     body_range: tuple | None = None
+    # Capabilities the declaration itself asserts, for declaration sites that ARE the
+    # operation and have no code for T1 to trace -- a Terraform resource, a Kubernetes
+    # manifest, a CI job. Must be IDs from capabilities.json: an unknown ID hard-fails.
+    # When empty, the declaration says only that the operation exists, and its
+    # requirements are left to T1/T2 (never silently empty -- see pipeline).
+    capabilities: list = field(default_factory=list)
+    # Scheduling is orthogonal to phase, so it is a trigger, not a phase. Only a
+    # declaration that actually names a schedule sets this away from "manual".
+    trigger: str = "manual"
 
     def evidence(self):
         return {"source": "declared", "loc": self.loc, "detail": self.detail or self.dialect}
@@ -44,6 +53,8 @@ class Candidate:
             "inputs": list(self.inputs),
             "phase_hint": self.phase_hint,
             "optional_hint": self.optional_hint,
+            "capabilities": list(self.capabilities),
+            "trigger": self.trigger,
         }
 
 

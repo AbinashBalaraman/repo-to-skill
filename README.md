@@ -9,7 +9,7 @@ Convert any repository into a portable agent skill.
 
 Existing converters (`Skill_Seekers`, `repo2skill`) emit **knowledge** — documentation about what a repo is. `r2s` emits **capability**: for every operation the repo performs, a decision about how the target harness will actually perform it. That decision layer is the **capability map**, and it is the point of this project.
 
-**Status:** M0–M3 complete, working end to end. Extraction is Python-first. MCP synthesis is not built.
+**Status:** M0–M6 complete — extract, route and emit all work end to end. Extraction is Python-first. The MCP server is a spike, not production.
 
 ## What it is
 
@@ -19,10 +19,14 @@ An app that produces skills. Four artifacts at four layers:
 |---|---|---|
 | Engine | `r2s` core | Python library |
 | Interface | `r2s` CLI | console script |
-| Convenience | meta-skill | `SKILL.md` driving the CLI *(M7, not built)* |
+| Convenience | meta-skill | `SKILL.md` driving the CLI |
 | **Output** | one skill per converted repo | Agent Skills package |
 
 It is not a skill itself. A skill can *describe* a capability; it cannot *deterministically analyze*. Static analysis, byte-stable output and calibrated confidence all require a program.
+
+### The meta-skill
+
+`SKILL.md` at the repository root is a thin meta-skill, so a user can say "convert this repo" from inside an agent harness. It drives the installed `r2s` CLI and cannot replace it: it chooses which command to run, in what order, and interprets the output, while the analysis itself — static parsing, deterministic output, calibrated confidence — stays in the program. It walks the real workflow, `extract` → review the generated `inventory.review.md` → edit into `inventory.json` → `convert`, and treats the review as mandatory, because the router refuses to route a draft inventory and that refusal is a design feature.
 
 ## Install
 
@@ -108,28 +112,45 @@ From the `agent-system` fixture:
 
 ## Output contract
 
-> **Not implemented.** No emitter exists yet. `r2s` currently stops at the routed
-> report (`r2s convert`), which is the input to emission. The layout below is the
-> specified target, not something the tool produces today. Tracked as M6.
+`r2s convert --emit <dir>` writes one skill package per harness profile.
 
 ```
 <skill>/
 ├── SKILL.md                      pipeline; each step annotated with binding, gates, fidelity
 ├── references/
-│   ├── bindings.md               resolved binding table for the target harness
+│   ├── bindings.md               resolved binding table, with the evidence behind each requirement
 │   ├── degradation.md            what is degraded, which stand-in, declared fidelity
 │   ├── blocked.md                ask-user questions with safe defaults
 │   └── gates.md                  fail-closed gates
 └── scripts/                      only the stand-in scripts actually needed
 ```
 
-Conforms to `agentskills.io/specification`: `name` 1–64 chars kebab-case matching the folder, `description` 1–1024 chars, optional `license` / `compatibility` (≤500) / `metadata` (string→string) / `allowed-tools`. Body under 500 lines and ~5000 tokens; references one level deep. Validate with `skills-ref validate`.
+Conforms to `agentskills.io/specification`: `name` 1–64 chars kebab-case matching the folder, `description` 1–1024 chars, optional `license` / `compatibility` (≤500) / `metadata` (string→string) / `allowed-tools`. Body under 500 lines and ~5000 tokens; references one level deep. Validate with `skills-ref validate`, or with `r2s convert --emit` itself, which runs the spec check and the secret scan on what it just wrote.
 
 **The skill declares its own capability profile at the top of `SKILL.md`.** A skill that does not state its assumptions cannot fail loudly, so it fails silently.
 
+**The emitter refuses to emit from a draft inventory.** An unreviewed inventory has unconfirmed operations, and a skill built on those is confidently wrong rather than visibly incomplete. `--accept-unreviewed` overrides it and stamps the status into the skill, flagging every low-confidence operation inside.
+
+**No repository code is copied.** Stand-ins come from the curated catalog, so emitting a skill never redistributes someone else's source.
+
 ## Eval
 
-**L1 invariants** (`r2s convert` runs them; `tests/` covers each):
+```
+PYTHONPATH=src python -m eval        # all layers; exits non-zero on failure
+PYTHONPATH=src python -m eval L3     # one layer
+```
+
+A layer with no input reports `skipped`, not `pass`. A layer that silently passes when it had nothing to check manufactures confidence, which is worse than not having it.
+
+| Layer | What it does |
+|---|---|
+| **L1** | gate-survival invariants I1–I7 across every fixture × profile |
+| **L2** | behavioural cases keyed to gate classes, instantiated per fixture |
+| **L3** | secret-leak scan over freshly emitted skills |
+| **L4** | Agent Skills spec validation, including the profile declaration |
+| **L5** | extraction and emission determinism — byte-identical on re-run |
+
+**L1 invariants** (also enforced by `r2s convert`, which exits non-zero on failure):
 
 | # | Invariant |
 |---|---|
@@ -141,7 +162,9 @@ Conforms to `agentskills.io/specification`: `name` 1–64 chars kebab-case match
 | I6 | `publish` and `irreversible` never execute ungated |
 | I7 | a gated operation routed to `ask-user` surfaces its gate in the question |
 
-**L2 behavioural**, **L3 secret-leak scan**, **L4 spec validation**, **L5 SHA-diff stability** are specified in `docs/PLAN.md` and not yet built.
+**L2 scoring is strict:** producing a plausible artefact when the correct behaviour is to halt is a failure, not a partial pass. A tool that quietly emits a broken skill is worse than one that refuses.
+
+**L3 never prints the credential.** A report that echoes the secret is its own leak; findings carry the file, the line, and the credential type only.
 
 ## Layout
 
@@ -149,13 +172,18 @@ Conforms to `agentskills.io/specification`: `name` 1–64 chars kebab-case match
 src/r2s/
   capability/    vocab, profiles, router, invariants, report   <- the novel component
   profiler/      manifests, entrypoints, classify, suitability
-  extract/       dialects/, effects, catalog, docs, phases, confidence, coalesce, pipeline, review
+  extract/       pipeline, effects, catalog, docs, phases, confidence, coalesce, review
+                 gapfill (T4) and dialects/ (twelve declaration dialects)
+  emit/          SKILL.md and references/ rendering
   source/        snapshot, local
-  validate/      schema
+  validate/      schema, secrets (L3), spec (L4)
   data/          capabilities.json + catalog/ + harness-profiles/ + schemas/
                  (packaged; resolved via importlib.resources so an installed wheel works)
   cli.py
+eval/            the L1-L5 harness, runnable as `python -m eval`
+mcp/             the MCP synthesis spike (does not execute)
 docs/            PLAN.md, prior-art.md
+SKILL.md         the meta-skill that drives the CLI
 fixtures/        cli-tool/feed-sync, agent-system/youtube-automation
                  (eval goldens, deliberately not packaged)
 tests/
@@ -167,19 +195,18 @@ tests/
 python -m unittest discover -s tests
 ```
 
-66 tests, stdlib only. They cover the vocabulary contract, routing, all seven invariants, schema rejection cases, the effect-matcher false positives that the fixture exposed, phase inference, and end-to-end extraction on a repo the system has never seen.
+143 tests, stdlib only. They cover the vocabulary contract, routing, all seven invariants, schema rejection cases, the effect-matcher false positives the fixture exposed, phase inference, the emitter contract, the secret scanner, the spec validator, and end-to-end extraction on a repo the system has never seen.
 
 ## Not built
 
-Against the milestone plan in `docs/PLAN.md`: **M0–M3 and M5 are done** (schema and vocabulary, profiler, extraction spine, eval, capability router). Still outstanding:
+Against the milestone plan in `docs/PLAN.md` §7 — **M0–M6 are done** (fixtures and schema, profiler, extraction, capability router, emitter and validators, frontends).
 
-- **M4** — extraction breadth: the remaining dialects, non-Python effect tracing, T3 gate detection beyond the current heuristics, T4 LLM gap-fill
-- **M6** — the emitter, which is what actually produces a skill package
-- **M7** — CLI polish and the meta-skill frontend
-- **M8** — MCP synthesis spike
-- Eval layers **L2–L5** (behavioural, secret-leak scan, spec validation, SHA-diff stability)
+Two things remain, and neither is a milestone:
 
-Extraction is **Python-first**. Other languages get declaration and catalog coverage but weaker call-graph fidelity, so requirement attribution on them is correspondingly weaker.
+- **MCP synthesis (PLAN's M5)** is a spike, not production. `mcp/server.py` is a real stdio JSON-RPC server that loads, answers `tools/list` and `tools/call`, and exposes one tool per stand-in-backed operation — but it does **not execute**, because a catalog stand-in is a curated description with declared fidelity, not a runnable script. `tools/call` returns the routing decision with `executed: false`. See `mcp/README.md`.
+- **Extraction breadth is incomplete.** Twelve dialects cover Python CLI, Python and JS web routes, OpenAPI, protobuf, GitHub Actions, Make, package scripts, docker-compose, systemd, cron, orchestrators, agent tool registries and infra. Not covered: Rust, Go and Java declaration sites, and T4 LLM gap-fill is a flag that is off by default.
+
+Extraction is **Python-first**. Effect tracing uses stdlib `ast`; other languages get declaration and catalog coverage but weaker call-graph fidelity, so requirement attribution on them is correspondingly weaker.
 
 ## Contributing
 

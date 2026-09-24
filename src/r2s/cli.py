@@ -14,6 +14,7 @@ from .capability import invariants, report, router
 from .capability import profiles as profiles_mod
 from .capability.profiles import ProfileError
 from .capability.vocab import CapabilityVocab, StandinCatalog, VocabError
+from .emit import EmitError, emit_skill
 from .extract import catalog as catalog_mod
 from .extract import effects as effects_mod
 from .extract import pipeline as pipeline_mod
@@ -22,6 +23,8 @@ from .source import build_snapshot
 from .source.local import SourceError, detect_git_meta, fetch_git, resolve_local
 from .util.io import dump_json, load_json, write_text
 from .validate import schema as schema_mod
+from .validate import secrets as secrets_mod
+from .validate import spec as spec_mod
 
 
 def _context():
@@ -193,8 +196,50 @@ def cmd_convert(args):
         if args.json_out:
             dump_json(Path(args.json_out), built)
 
+        if args.emit:
+            try:
+                skill_dir, _, emit_warnings = emit_skill(
+                    inventory,
+                    profile,
+                    Path(args.emit),
+                    vocab,
+                    standins,
+                    accept_unreviewed=args.accept_unreviewed,
+                )
+            except EmitError as exc:
+                print(f"\nEMIT: FAIL -- {exc}")
+                failed_any = True
+                continue
+            print(f"\nEMITTED: {skill_dir}")
+            for warning in emit_warnings:
+                print(f"  WARNING: {warning}")
+
+            # Validate what we just wrote, rather than trusting the writer.
+            spec_failures = spec_mod.validate_skill(skill_dir)
+            profile_failures = spec_mod.validate_profile_declaration(
+                (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+            )
+            leaks = secrets_mod.scan_directory(skill_dir)
+            if spec_failures or profile_failures or leaks:
+                failed_any = True
+                for failure in spec_failures:
+                    print(f"  SPEC: {failure}")
+                for failure in profile_failures:
+                    print(f"  PROFILE: {failure}")
+                for leak in leaks:
+                    print(f"  LEAK: {leak}")
+            else:
+                print("  spec: OK   profile declared: OK   secret scan: clean")
+
     # Non-zero exit when an invariant fails, so CI and shell callers can gate on it.
     return 1 if failed_any else 0
+
+
+def cmd_scan(args):
+    """L3: scan an emitted skill for credentials."""
+    findings = secrets_mod.scan_directory(Path(args.path))
+    print(secrets_mod.format_findings(findings, root=args.path))
+    return 1 if findings else 0
 
 
 def cmd_validate(args):
@@ -279,7 +324,16 @@ def build_parser():
         help="route a draft; the skill will be stamped unreviewed",
     )
     p.add_argument("--json-out", help="write the full report as JSON")
+    p.add_argument(
+        "--emit",
+        metavar="DIR",
+        help="write an Agent Skills package into DIR, one skill per profile",
+    )
     p.set_defaults(func=cmd_convert)
+
+    p = sub.add_parser("scan", help="scan an emitted skill for leaked credentials (L3)")
+    p.add_argument("path", help="skill directory to scan")
+    p.set_defaults(func=cmd_scan)
 
     p = sub.add_parser("validate", help="validate an inventory against the schema and vocabulary")
     p.add_argument("inventory")

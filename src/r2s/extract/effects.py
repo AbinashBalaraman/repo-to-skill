@@ -81,6 +81,37 @@ def _literal_verb(node):
     return None
 
 
+_READ_STRING_PREFIXES = ("select", "with", "show", "describe", "explain", "pragma")
+_READ_CALL_NAMES = ("select", "text", "query")
+
+
+def _arg0_looks_like_a_read(node):
+    """True when the first positional argument is recognisably a read.
+
+    `session.execute(...)` is genuinely ambiguous: it runs `select` just as happily as
+    `delete`. Guessing "read" would be fail-*open* -- a DELETE would be reported as
+    read-only and lose its gate, which is the exact failure this project exists to
+    prevent. Guessing "write" over-requires and blocks legitimate reads.
+
+    So we look at the argument. `execute("select 1")` and `execute(select(Entry))` are
+    reads and are recognised; anything else is left unmatched and surfaces for review,
+    which is the honest outcome for an ambiguous call.
+    """
+    if not node.args:
+        return False
+    first = node.args[0]
+
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return first.value.strip().lower().startswith(_READ_STRING_PREFIXES)
+
+    if isinstance(first, ast.Call):
+        dotted = _dotted_name(first.func)
+        if dotted and dotted.split(".")[-1] in _READ_CALL_NAMES:
+            return True
+
+    return False
+
+
 def match_call(node, catalog):
     """Return the first matching pattern result, else None."""
     dotted = _dotted_name(node.func)
@@ -116,6 +147,8 @@ def match_call(node, catalog):
         if m.get("mode_absent") and mode is not None:
             continue
         if "verb_in" in m and (verb is None or verb not in m["verb_in"]):
+            continue
+        if m.get("arg0_read") and not _arg0_looks_like_a_read(node):
             continue
 
         return pattern

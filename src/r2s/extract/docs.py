@@ -147,24 +147,162 @@ def scan(snapshot):
 
 
 def gates_for_operation(operation_name, operation_summary, gate_signals, limit=6):
-    """Gate hints for one operation, from doc language that mentions its own words.
+    """Gate hints for one operation, when its siblings are not known.
 
-    Deliberately permissive: it returns gates the operation's name shares vocabulary
-    with, plus any gate whose language appears anywhere in the docs when the operation
-    name is generic. Review prunes.
+    Kept for callers that hold a single operation. The pipeline uses `associate`, which
+    can see every operation and so can tell a mention from a subject.
     """
-    haystack = f"{operation_name} {operation_summary or ''}".lower()
-    words = {w for w in re.split(r"\W+", haystack) if len(w) > 3}
+    mapping, _ = associate([("_", operation_name)], gate_signals, limit=limit)
+    return mapping.get("_", [])
 
+
+# Vocabulary that identifies the *subject* of a gate sentence. A gate is attributed to
+# the operation the gate language names; the hint table is what lets a `publish` gate
+# find an operation called `deploy` even though the words differ.
+_GATE_NAME_HINTS = {
+    "publish": (
+        "publish",
+        "upload",
+        "release",
+        "ship",
+        "deploy",
+        "post",
+        "send",
+        "export",
+        "submit",
+        "notify",
+        "email",
+        "announce",
+    ),
+    "spend": ("charge", "bill", "pay", "cost", "budget", "spend", "purchase", "order", "invoice"),
+    "irreversible": (
+        "delete",
+        "drop",
+        "destroy",
+        "wipe",
+        "purge",
+        "reset",
+        "migrate",
+        "truncate",
+        "remove",
+        "rollback",
+    ),
+    "legal": (
+        "rights",
+        "license",
+        "licence",
+        "copyright",
+        "consent",
+        "attribution",
+        "disclose",
+        "provenance",
+        "compliance",
+        "terms",
+    ),
+    "privacy": ("privacy", "personal", "pii", "gdpr", "redact", "anonymize", "anonymise", "scrub"),
+}
+
+# Function words that carry no operation identity. They are dropped so a summary line
+# like "the status command never prints them" cannot be matched by the word "command".
+_STOPWORDS = frozenset(
+    {
+        "command",
+        "commands",
+        "with",
+        "from",
+        "that",
+        "this",
+        "into",
+        "each",
+        "then",
+        "your",
+        "have",
+        "will",
+        "when",
+        "also",
+        "only",
+        "over",
+        "more",
+        "than",
+        "them",
+        "they",
+        "there",
+        "their",
+        "which",
+        "using",
+        "used",
+        "operation",
+        "operations",
+    }
+)
+
+
+def _operation_tokens(name):
+    """Identity tokens of an operation name. Deliberately not the declaration detail.
+
+    The declaration detail is boilerplate ("@command on fetch()"), and matching gate
+    language against it was the source of most of the noise this module used to emit:
+    the word "command" appears in half the prose of a typical README.
+    """
+    tokens = set()
+    for token in re.split(r"\W+", (name or "").lower()):
+        if len(token) > 3 and token not in _STOPWORDS:
+            tokens.add(token)
+    return tokens
+
+
+def _names_in_line(line, operations):
+    """Operations whose name token appears in the line, in a deterministic order."""
+    lowered = line.lower()
     hits = []
-    seen = set()
-    for signal in gate_signals:
-        if signal.gate in seen:
-            continue
-        snippet = signal.snippet.lower()
-        if any(word in snippet for word in words):
-            hits.append(signal)
-            seen.add(signal.gate)
-        if len(hits) >= limit:
-            break
+    for op_id, name in operations:
+        for token in sorted(_operation_tokens(name)):
+            if re.search(rf"\b{re.escape(token)}", lowered):
+                hits.append((op_id, name))
+                break
     return hits
+
+
+def _gate_matches_name(gate, name):
+    tokens = _operation_tokens(name)
+    return any(
+        token.startswith(hint) or hint.startswith(token)
+        for token in tokens
+        for hint in _GATE_NAME_HINTS.get(gate, ())
+    )
+
+
+def associate(operations, gate_signals, limit=6):
+    """Attribute gate language to operations. Returns (mapping, unattributed).
+
+    `operations` is an iterable of (op_id, name); `mapping` maps op_id to a list of
+    DocSignal, deduplicated by gate and capped at `limit`.
+
+    The rule is: a gate is attributed to the operation the gate language *names*. If a
+    gate's own vocabulary matches an operation's name, that operation claims it -- this
+    is what keeps a `publish` gate on the `publish` operation. Otherwise every operation
+    named on the line claims it, which is the deliberately fail-closed direction: a
+    spurious gate at low confidence is reviewable, a missed one is not.
+
+    A signal that names no operation at all is returned as unattributed rather than
+    smeared across the whole inventory. The pipeline reports those, so nothing is
+    silently dropped; the difference from before is that "we found gate language and
+    could not tell you where it belongs" is now distinguishable from "this operation
+    is gated".
+    """
+    operations = list(operations)
+    mapping = {op_id: [] for op_id, _ in operations}
+    unattributed = []
+
+    for signal in gate_signals:
+        named = _names_in_line(signal.snippet, operations)
+        if not named:
+            unattributed.append(signal)
+            continue
+        owners = [op for op in named if _gate_matches_name(signal.gate, op[1])] or named
+        for op_id, _ in owners:
+            bucket = mapping[op_id]
+            if len(bucket) >= limit or any(hit.gate == signal.gate for hit in bucket):
+                continue
+            bucket.append(signal)
+    return mapping, unattributed
