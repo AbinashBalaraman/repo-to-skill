@@ -76,6 +76,16 @@ jobs:
               "r2s/data/catalog/effects.json",
               "r2s/data/catalog/stand-ins/index.json",
               "r2s/py.typed",
+              # Stand-in scripts are executable payload: a wheel without them installs a
+              # package whose stand-ins cannot run, which is a broken release rather than
+              # a degraded one.
+              "r2s/data/catalog/stand-ins/scripts/srt_from_text.py",
+              "r2s/data/catalog/stand-ins/scripts/gradient_card.py",
+              "r2s/data/catalog/stand-ins/scripts/ken_burns.py",
+              "r2s/data/catalog/stand-ins/scripts/vertical_cut.py",
+              "r2s/data/catalog/stand-ins/scripts/flag_unverifiable.py",
+              "r2s/data/catalog/stand-ins/scripts/deferred_handoff.py",
+              "r2s/data/catalog/stand-ins/scripts/no_op_report.py",
           ]
           missing = [r for r in required if r not in names]
           if missing:

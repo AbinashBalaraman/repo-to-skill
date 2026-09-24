@@ -1,12 +1,13 @@
-"""M7 meta-skill and M8 MCP spike tests. Stdlib unittest only.
+"""M7 meta-skill and M8 MCP server tests. Stdlib unittest only.
 
 Two artefacts are covered:
 
   * ``SKILL.md`` at the repository root -- the meta-skill that drives the installed
     ``r2s`` CLI. Tested against the Agent Skills constraints the README cites.
-  * ``mcp/server.py`` -- the MCP spike. Tested for the honest behaviour it promises:
-    it exposes only stand-in-backed operations, reports ``executed: false``, and never
-    leaks a credential value.
+  * ``mcp/server.py`` -- the MCP server. Tested for the behaviour it promises: it
+    exposes only stand-in-backed operations, it *executes* them where a stand-in is
+    runnable, it reports ``executed: false`` with a concrete reason where one is not,
+    and it never leaks a credential value.
 """
 
 import importlib.util
@@ -24,15 +25,27 @@ MCP_DIR = PROJECT / "mcp"
 SERVER_PY = MCP_DIR / "server.py"
 SAMPLE_REPORT = MCP_DIR / "fixtures" / "sample-report.json"
 
+# The server imports `r2s` to execute stand-ins. A checkout is not installed, so the
+# tests put `src` on the path the same way the README's quickstart does.
+SRC_DIR = PROJECT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 KEBAB = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 
 def load_server_module():
-    """Import mcp/server.py by path. It is a spike script, not a packaged module."""
-    spec = importlib.util.spec_from_file_location("r2s_mcp_spike_server", SERVER_PY)
+    """Import mcp/server.py by path. It is a standalone script, not a packaged module."""
+    spec = importlib.util.spec_from_file_location("r2s_mcp_server", SERVER_PY)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_standins():
+    from r2s.capability.vocab import StandinCatalog
+
+    return StandinCatalog.load()
 
 
 def parse_frontmatter(text):
@@ -102,35 +115,77 @@ class McpServerUnitTests(unittest.TestCase):
     def setUpClass(cls):
         cls.server = load_server_module()
         cls.report = cls.server.load_report(SAMPLE_REPORT)
+        cls.standins = load_standins()
+        cls.tools, cls.rows = cls.server.build_tools(cls.report, cls.standins)
 
     def test_only_stand_in_backed_operations_become_tools(self):
-        tools, rows = self.server.build_tools(self.report)
-        names = sorted(tool["name"] for tool in tools)
+        names = sorted(tool["name"] for tool in self.tools)
         self.assertEqual(names, ["caption-audio", "fetch-trends", "gen-scene-visuals"])
-        for tool in tools:
-            self.assertEqual(tool["name"], rows[tool["name"]]["id"])
-            self.assertTrue(rows[tool["name"]]["stand_in"])
+        for tool in self.tools:
+            self.assertEqual(tool["name"], self.rows[tool["name"]]["id"])
+            self.assertTrue(self.rows[tool["name"]]["stand_in"])
 
     def test_native_and_ask_user_operations_are_not_exposed(self):
-        tools, _ = self.server.build_tools(self.report)
-        names = {tool["name"] for tool in tools}
+        names = {tool["name"] for tool in self.tools}
         for hidden in ("assemble-video", "gen-narration", "upload-video"):
             self.assertNotIn(hidden, names)
 
-    def test_call_reports_the_plan_without_executing(self):
-        _, rows = self.server.build_tools(self.report)
-        payload, missing = self.server.call_tool(rows["gen-scene-visuals"], {})
-        self.assertFalse(payload["executed"])
-        self.assertEqual(payload["stand_in"]["id"], "gradient-card-1080p")
-        self.assertEqual(payload["stand_in"]["fidelity"], 0.25)
-        self.assertEqual(payload["credentials"]["required_env"], [])
+    def test_a_stdlib_backed_operation_actually_executes(self):
+        """The headline claim: tools/call runs the stand-in and returns real artifacts."""
+        payload, missing = self.server.call_tool(
+            self.rows["caption-audio"],
+            {"inputs": {"text": "One sentence. A second, longer sentence follows here."}},
+            self.standins,
+        )
         self.assertEqual(missing, [])
+        self.assertTrue(payload["executed"], payload.get("reason"))
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual([a["path"] for a in payload["artifacts"]], ["subtitles.srt"])
+        self.assertEqual(payload["stand_in"]["id"], "srt-from-text")
+        self.assertEqual(payload["stand_in"]["fidelity"], 0.6)
 
-    def test_missing_credentials_fail_closed_with_names_not_values(self):
-        _, rows = self.server.build_tools(self.report)
-        payload, missing = self.server.call_tool(rows["fetch-trends"], {})
-        self.assertEqual(payload["credentials"]["required_env"], ["TRENDS_API_KEY"])
+    def test_a_stand_in_without_an_exec_contract_reports_why_it_cannot_run(self):
+        """`reasoning-without-sources` is a model call; r2s is offline and says so."""
+        payload, missing = self.server.call_tool(
+            self.rows["fetch-trends"], {"inputs": {"topic": "ai"}}, self.standins
+        )
+        # The credential is absent, so it fails closed before it ever gets to the stand-in.
         self.assertEqual(missing, ["TRENDS_API_KEY"])
+        self.assertFalse(payload["executed"])
+        self.assertIn("TRENDS_API_KEY", payload["execution_note"])
+
+    def test_a_tool_dependent_stand_in_never_fakes_success(self):
+        """`gradient-card-1080p` needs ffmpeg. Either it runs, or it says what went wrong.
+
+        Three outcomes are legitimate and the test accepts all three, because which one
+        occurs depends on the host: it runs; ffmpeg is absent (`unavailable`); or ffmpeg
+        is present but cannot be executed (`failed`). What is never legitimate is
+        reporting success with no artifact, or reporting success while an error was
+        swallowed -- so those are asserted in every branch.
+        """
+        payload, _ = self.server.call_tool(
+            self.rows["gen-scene-visuals"], {"inputs": {"title": "Test"}}, self.standins
+        )
+        if payload["executed"]:
+            self.assertEqual(payload["status"], "ok")
+            self.assertEqual([a["path"] for a in payload["artifacts"]], ["card.mp4"])
+            self.assertEqual(payload["exit_code"], 0)
+            return
+
+        self.assertIn(payload["status"], ("unavailable", "failed"))
+        self.assertEqual(payload["artifacts"], [], "a failed run must not report artifacts")
+        self.assertTrue(payload["reason"], "a failed run must carry a reason")
+        self.assertIn("ffmpeg", payload["reason"])
+        # The note must route the caller somewhere rather than leaving them stuck.
+        self.assertIn("ask-user", payload["execution_note"])
+
+    def test_unknown_input_is_rejected_rather_than_ignored(self):
+        payload, _ = self.server.call_tool(
+            self.rows["caption-audio"], {"inputs": {"txt": "typo"}}, self.standins
+        )
+        self.assertFalse(payload["executed"])
+        self.assertEqual(payload["status"], "failed")
+        self.assertIn("unknown input", payload["reason"])
 
 
 class McpServerProtocolTests(unittest.TestCase):
@@ -138,12 +193,19 @@ class McpServerProtocolTests(unittest.TestCase):
 
     def run_server(self, messages, env=None):
         payload = "".join(json.dumps(m) + "\n" for m in messages)
+        base = dict(os.environ)
+        # A checkout is not installed; put `src` on the path so the server can import r2s
+        # and therefore execute. This mirrors the documented quickstart.
+        existing = base.get("PYTHONPATH")
+        base["PYTHONPATH"] = f"{SRC_DIR}{os.pathsep}{existing}" if existing else str(SRC_DIR)
+        if env:
+            base.update(env)
         proc = subprocess.run(
             [sys.executable, str(SERVER_PY), str(SAMPLE_REPORT)],
             input=payload,
             capture_output=True,
             text=True,
-            env=env,
+            env=base,
             check=False,
         )
         responses = [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
@@ -159,7 +221,10 @@ class McpServerProtocolTests(unittest.TestCase):
                     "jsonrpc": "2.0",
                     "id": 3,
                     "method": "tools/call",
-                    "params": {"name": "gen-scene-visuals", "arguments": {}},
+                    "params": {
+                        "name": "caption-audio",
+                        "arguments": {"inputs": {"text": "Hello there. This is a caption test."}},
+                    },
                 },
             ]
         )
@@ -167,19 +232,19 @@ class McpServerProtocolTests(unittest.TestCase):
         # The initialized notification must not be answered.
         self.assertEqual([r["id"] for r in responses], [1, 2, 3])
 
-        self.assertEqual(responses[0]["result"]["serverInfo"]["name"], "r2s-mcp-spike")
+        self.assertEqual(responses[0]["result"]["serverInfo"]["name"], "r2s-mcp")
         listed = [t["name"] for t in responses[1]["result"]["tools"]]
         self.assertEqual(listed, ["caption-audio", "fetch-trends", "gen-scene-visuals"])
 
         result = responses[2]["result"]
         self.assertFalse(result["isError"])
-        plan = json.loads(result["content"][0]["text"])
-        self.assertFalse(plan["executed"])
+        payload = json.loads(result["content"][0]["text"])
+        # Executed for real over the wire, not merely described.
+        self.assertTrue(payload["executed"], payload.get("reason"))
+        self.assertEqual([a["path"] for a in payload["artifacts"]], ["subtitles.srt"])
 
     def test_credential_value_is_never_leaked(self):
         sentinel = "SUPER-SECRET-SENTINEL-VALUE"
-        env = dict(os.environ)
-        env["TRENDS_API_KEY"] = sentinel
         responses, proc = self.run_server(
             [
                 {
@@ -189,14 +254,14 @@ class McpServerProtocolTests(unittest.TestCase):
                     "params": {"name": "fetch-trends", "arguments": {"inputs": {"topic": "ai"}}},
                 }
             ],
-            env=env,
+            env={"TRENDS_API_KEY": sentinel},
         )
         self.assertNotIn(sentinel, proc.stdout)
         self.assertNotIn(sentinel, proc.stderr)
-        plan = json.loads(responses[0]["result"]["content"][0]["text"])
-        # Present, so the call is not blocked -- but only the name is ever emitted.
-        self.assertEqual(plan["credentials"]["missing_env"], [])
-        self.assertEqual(plan["credentials"]["required_env"], ["TRENDS_API_KEY"])
+        payload = json.loads(responses[0]["result"]["content"][0]["text"])
+        # Present, so the credential check does not block -- but only the name is emitted.
+        self.assertEqual(payload["credentials"]["missing_env"], [])
+        self.assertEqual(payload["credentials"]["required_env"], ["TRENDS_API_KEY"])
 
     def test_unknown_tool_and_method_return_jsonrpc_errors(self):
         responses, _ = self.run_server(

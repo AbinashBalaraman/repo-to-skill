@@ -1,6 +1,7 @@
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "notes": "Curated degraded substitutes. An operation references one by ID; inline definitions are rejected by the validator, because an invented stand-in is indistinguishable from fabrication. Three types: `reducing` does the same job worse, `deferred` stages the work locally and hands off, `no-op` does nothing and reports the gap.",
+  "exec_notes": "A stand-in may declare an `exec` block, which makes it runnable rather than merely describable. The block names a script under `stand-ins/scripts/` -- shipped with r2s itself, MIT-licensed, never copied from the repository under analysis -- plus the tools it needs, the inputs it accepts and a timeout. Scripts speak one protocol: a JSON job on stdin, a JSON result on stdout, non-zero exit on failure. A stand-in with no `exec` block, or with `exec_unavailable`, cannot be run; that is stated rather than hidden, and the reason is recorded in the catalog.",
   "defaults": {
     "image.generate": "gradient-card-1080p",
     "video.generate": "ken-burns-still",
@@ -16,7 +17,21 @@
       "capability": "media.assemble",
       "fidelity": 0.25,
       "desc": "Render the scene's title text on a solid gradient card at 1920x1080 via FFmpeg",
-      "caveat": "Output looks like a slideshow, not footage. Suitable only where motion is decorative."
+      "caveat": "Output looks like a slideshow, not footage. Suitable only where motion is decorative.",
+      "exec": {
+        "script": "gradient_card.py",
+        "runtime": "python",
+        "requires_tools": ["ffmpeg"],
+        "produces": ["video"],
+        "timeout_seconds": 180,
+        "inputs": {
+          "title": { "type": "string", "required": true, "description": "Text to render on the card." },
+          "duration": { "type": "number", "default": 8.0, "description": "Seconds of video to produce." },
+          "width": { "type": "integer", "default": 1920 },
+          "height": { "type": "integer", "default": 1080 },
+          "font": { "type": "string", "description": "Optional path to a TTF; resolved from R2S_FONT or a platform default otherwise." }
+        }
+      }
     },
     {
       "id": "gradient-card-720p",
@@ -24,7 +39,21 @@
       "capability": "media.assemble",
       "fidelity": 0.3,
       "desc": "Composite the title on a high-contrast gradient card at 1280x720 via FFmpeg",
-      "caveat": "No imagery, no subject. Fine as a placeholder, weak as a thumbnail."
+      "caveat": "No imagery, no subject. Fine as a placeholder, weak as a thumbnail.",
+      "exec": {
+        "script": "gradient_card.py",
+        "runtime": "python",
+        "requires_tools": ["ffmpeg"],
+        "produces": ["video"],
+        "timeout_seconds": 180,
+        "inputs": {
+          "title": { "type": "string", "required": true, "description": "Text to render on the card." },
+          "duration": { "type": "number", "default": 6.0, "description": "Seconds of video to produce." },
+          "width": { "type": "integer", "default": 1280 },
+          "height": { "type": "integer", "default": 720 },
+          "font": { "type": "string", "description": "Optional path to a TTF; resolved from R2S_FONT or a platform default otherwise." }
+        }
+      }
     },
     {
       "id": "ken-burns-still",
@@ -32,7 +61,21 @@
       "capability": "media.assemble",
       "fidelity": 0.4,
       "desc": "Pan and zoom slowly across a single still image to produce apparent motion",
-      "caveat": "Reads as motion without generating any. Cheap and usually better than a static card."
+      "caveat": "Reads as motion without generating any. Cheap and usually better than a static card.",
+      "exec": {
+        "script": "ken_burns.py",
+        "runtime": "python",
+        "requires_tools": ["ffmpeg"],
+        "produces": ["video"],
+        "timeout_seconds": 300,
+        "inputs": {
+          "image": { "type": "string", "required": true, "description": "Path to the still image to move across." },
+          "duration": { "type": "number", "default": 8.0 },
+          "zoom_to": { "type": "number", "default": 1.35, "description": "Final zoom factor, 1.01-4.0." },
+          "width": { "type": "integer", "default": 1920 },
+          "height": { "type": "integer", "default": 1080 }
+        }
+      }
     },
     {
       "id": "srt-from-text",
@@ -40,7 +83,19 @@
       "capability": "file.write",
       "fidelity": 0.6,
       "desc": "Derive an SRT from the script text using per-scene timing estimates",
-      "caveat": "Timings are estimated, not measured, so captions drift from the audio."
+      "caveat": "Timings are estimated, not measured, so captions drift from the audio.",
+      "exec": {
+        "script": "srt_from_text.py",
+        "runtime": "python",
+        "requires_tools": [],
+        "produces": ["srt"],
+        "timeout_seconds": 60,
+        "inputs": {
+          "text": { "type": "string", "required": true, "description": "Script or transcript text to convert into cues." },
+          "seconds_per_cue": { "type": "number", "default": 4.0 },
+          "max_chars_per_line": { "type": "integer", "default": 84 }
+        }
+      }
     },
     {
       "id": "vertical-cut",
@@ -48,7 +103,20 @@
       "capability": "media.assemble",
       "fidelity": 0.45,
       "desc": "Cut vertical clips at scene boundaries via FFmpeg with no reframing",
-      "caveat": "Subjects will be cropped out. No face tracking, no safe-area awareness."
+      "caveat": "Subjects will be cropped out. No face tracking, no safe-area awareness.",
+      "exec": {
+        "script": "vertical_cut.py",
+        "runtime": "python",
+        "requires_tools": ["ffmpeg", "ffprobe"],
+        "produces": ["video"],
+        "timeout_seconds": 600,
+        "inputs": {
+          "input": { "type": "string", "required": true, "description": "Path to the video to cut." },
+          "scene_seconds": { "type": "number", "default": 5.0 },
+          "width": { "type": "integer", "default": 1080 },
+          "height": { "type": "integer", "default": 1920 }
+        }
+      }
     },
     {
       "id": "reasoning-without-sources",
@@ -56,7 +124,8 @@
       "capability": "text.generate",
       "fidelity": 0.5,
       "desc": "Reason about the subject from model knowledge alone, with no live sources",
-      "caveat": "No citations and no freshness. Must be labelled as unsourced in the output."
+      "caveat": "No citations and no freshness. Must be labelled as unsourced in the output.",
+      "exec_unavailable": "This stand-in is a model call by definition. r2s is stdlib-only and offline, so it cannot perform the step and will not pretend to: there is no deterministic script that substitutes for a model. The operation correctly routes to ask-user when this stand-in is the only option."
     },
     {
       "id": "flag-unverifiable-claims",
@@ -64,7 +133,17 @@
       "capability": "text.generate",
       "fidelity": 0.4,
       "desc": "Flag claims that look unverifiable without live sources, rather than checking them",
-      "caveat": "Detection is heuristic. A claim that looks fine may still be wrong."
+      "caveat": "Detection is heuristic. A claim that looks fine may still be wrong.",
+      "exec": {
+        "script": "flag_unverifiable.py",
+        "runtime": "python",
+        "requires_tools": [],
+        "produces": ["json", "markdown"],
+        "timeout_seconds": 60,
+        "inputs": {
+          "text": { "type": "string", "required": true, "description": "Text whose claims should be flagged." }
+        }
+      }
     },
     {
       "id": "deferred-stage-and-handoff",
@@ -72,7 +151,15 @@
       "capability": "file.write",
       "fidelity": 0.0,
       "desc": "Write the inputs and instructions to a handoff file, and stop for a human to run the step elsewhere",
-      "caveat": "The pipeline does not complete. This is the honest option when nothing can substitute."
+      "caveat": "The pipeline does not complete. This is the honest option when nothing can substitute.",
+      "exec": {
+        "script": "deferred_handoff.py",
+        "runtime": "python",
+        "requires_tools": [],
+        "produces": ["markdown", "json"],
+        "timeout_seconds": 30,
+        "inputs": {}
+      }
     },
     {
       "id": "no-op-report",
@@ -80,7 +167,15 @@
       "capability": "file.write",
       "fidelity": 0.0,
       "desc": "Skip the step and record the omission in the output manifest",
-      "caveat": "Only legal for optional operations. A required operation routed here is a bug."
+      "caveat": "Only legal for optional operations. A required operation routed here is a bug.",
+      "exec": {
+        "script": "no_op_report.py",
+        "runtime": "python",
+        "requires_tools": [],
+        "produces": ["json"],
+        "timeout_seconds": 30,
+        "inputs": {}
+      }
     }
   ]
 }

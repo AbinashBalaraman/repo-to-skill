@@ -21,7 +21,14 @@ def sources_of(evidence):
     return {e.get("source") for e in evidence or []}
 
 
-def fuse(evidence, corroboration=0, ambiguous=False, conflicts=None, weak_attribution=False):
+def fuse(
+    evidence,
+    corroboration=0,
+    ambiguous=False,
+    conflicts=None,
+    weak_attribution=False,
+    placeholder=False,
+):
     """Return (confidence, notes).
 
     corroboration     -- number of independent provider matches agreeing.
@@ -31,6 +38,8 @@ def fuse(evidence, corroboration=0, ambiguous=False, conflicts=None, weak_attrib
                          position rather than by structure, so they may belong to a
                          different operation. Caps confidence at MEDIUM: a confident
                          wrong requirement is worse than an uncertain right one.
+    placeholder       -- the requirement set is the `external.call` placeholder, because
+                         nothing was traced and nothing was declared. Forces LOW.
     """
     notes = []
     sources = sources_of(evidence)
@@ -44,6 +53,14 @@ def fuse(evidence, corroboration=0, ambiguous=False, conflicts=None, weak_attrib
     # A proposed (LLM) signal is never trusted, alone or in company.
     if sources == {"proposed"}:
         return LOW, ["proposed only; must be confirmed by a human"]
+
+    if placeholder:
+        # Checked before the `declared` branch on purpose. A declaration evidences that
+        # the operation EXISTS; it says nothing about what the operation requires. Letting
+        # it raise confidence here is exactly how a placeholder becomes a confident wrong
+        # requirement -- and the note it used to emit blamed an "ambiguous provider
+        # match" that had not occurred.
+        return LOW, ["requirement is a placeholder; nothing was traced or declared"]
 
     def cap(result, reason):
         """Apply the weak-attribution ceiling."""

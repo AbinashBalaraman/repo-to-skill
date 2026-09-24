@@ -931,6 +931,75 @@ class TestAttributionHonesty(unittest.TestCase):
         self.assertEqual(capped, MEDIUM)
         self.assertTrue(notes)
 
+    def test_a_placeholder_requirement_is_low_confidence_whatever_else_is_declared(self):
+        """A declared operation with no traceable requirement must not look confident.
+
+        The declaration proves the operation EXISTS; it says nothing about what the
+        operation needs. `placeholder` used to be signalled by reusing `ambiguous`, which
+        returned MEDIUM and emitted a note blaming an "ambiguous provider match" that had
+        not happened -- a confident wrong requirement with a false explanation.
+        """
+        from r2s.extract.confidence import HIGH, LOW, fuse
+
+        evidence = [
+            {"source": "declared", "loc": "routes.rs:7", "detail": "GET route /metrics"},
+            {"source": "proposed", "loc": "routes.rs:7", "detail": "placeholder"},
+        ]
+        self.assertEqual(fuse(evidence)[0], HIGH, "sanity: declared alone reads as strong")
+
+        confidence, notes = fuse(evidence, placeholder=True)
+        self.assertEqual(confidence, LOW)
+        self.assertTrue(any("placeholder" in note for note in notes), notes)
+        self.assertFalse(
+            any("ambiguous" in note for note in notes),
+            f"the note must not blame an ambiguous provider match: {notes}",
+        )
+
+    def test_a_declared_operation_with_no_requirement_is_flagged_low_in_the_pipeline(self):
+        """End to end: a declaration whose requirement cannot be determined lands at low."""
+        import tempfile
+
+        from r2s.extract import pipeline as pipeline_mod
+        from r2s.profiler import profile as profile_repo
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "rusty"
+            (root / "src").mkdir(parents=True)
+            (root / "Cargo.toml").write_text(
+                '[package]\nname = "rusty"\nversion = "0.1.0"\n', encoding="utf-8"
+            )
+            (root / "src" / "routes.rs").write_text(
+                '#[get("/metrics")]\nasync fn metrics() -> String { "ok".into() }\n',
+                encoding="utf-8",
+            )
+            snapshot = build_snapshot(root)
+            result = profile_repo(snapshot)
+            draft, _ = pipeline_mod.extract(
+                snapshot,
+                result,
+                CapabilityVocab.load(),
+                ProviderCatalog.load(),
+                effects_mod.EffectCatalog.load(),
+                StandinCatalog.load(),
+                source={
+                    "kind": "local",
+                    "url": None,
+                    "sha": None,
+                    "subdir": None,
+                    "license": None,
+                },
+            )
+
+        placeholder_ops = [op for op in draft["operations"] if op["requires"] == ["external.call"]]
+        self.assertTrue(placeholder_ops, "expected at least one placeholder operation")
+        for op in placeholder_ops:
+            self.assertEqual(
+                op["confidence"],
+                "low",
+                f"{op['id']} requires only the placeholder and must be low confidence",
+            )
+            self.assertIn("placeholder", op.get("notes", ""))
+
 
 class TestCliContract(unittest.TestCase):
     def test_convert_exits_nonzero_when_an_invariant_fails(self):

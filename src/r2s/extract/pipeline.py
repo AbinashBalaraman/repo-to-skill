@@ -386,9 +386,16 @@ def _build_operation(
     requires = sorted(set(traced_caps) | set(declared_caps))
     ambiguous = any(m.ambiguous for m in provider_hits)
     corroboration = len({m.id for m in provider_hits})
+    placeholder = False
 
-    # Never silently "requires nothing". If nothing was traced for this operation,
-    # say so explicitly at low confidence rather than emitting an empty requirement.
+    # Never silently "requires nothing". If nothing was traced for this operation, say so
+    # explicitly at LOW confidence rather than emitting an empty requirement.
+    #
+    # `placeholder` is its own signal rather than a reuse of `ambiguous`. The two are
+    # different facts -- "we do not know what this needs" versus "a matched provider
+    # could not be resolved by import alone" -- and conflating them meant a placeholder
+    # was reported at MEDIUM with a note blaming an ambiguous provider match that had
+    # never happened.
     if not requires:
         requires = ["external.call"]
         evidence.append(
@@ -399,7 +406,7 @@ def _build_operation(
                 "as a placeholder pending review",
             }
         )
-        ambiguous = True
+        placeholder = True
 
     # Gates: provider hints plus documentation language that names this operation.
     gate_set = []
@@ -420,6 +427,7 @@ def _build_operation(
         corroboration=corroboration,
         ambiguous=ambiguous,
         weak_attribution=weak_attribution,
+        placeholder=placeholder,
     )
     # A capability read off a declaration is a mapping, not a traced call. It is
     # honest evidence, but not the same grade as an observed call site, so it does not

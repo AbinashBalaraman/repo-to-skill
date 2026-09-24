@@ -59,6 +59,7 @@ r2s = [
     "data/*.json",
     "data/catalog/*.json",
     "data/catalog/stand-ins/*.json",
+    "data/catalog/stand-ins/scripts/*.py",
     "data/harness-profiles/*.json",
     "data/schemas/*.json",
 ]

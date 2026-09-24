@@ -8,7 +8,7 @@ ask, and the gate list.
 import shutil
 from pathlib import Path
 
-from .. import config
+from .. import execute as execute_mod
 from ..util.io import write_text
 
 # Gates are fail-closed, so the safe default is always "do not do the thing".
@@ -89,7 +89,7 @@ def _bindings_md(inventory, profile, rows, summary):
     return "\n".join(lines)
 
 
-def _degradation_md(rows, summary):
+def _degradation_md(rows, summary, standins):
     degraded = [r for r in rows if r["binding"] == "script" and r["stand_in_detail"]]
     lines = [
         "# Degradation",
@@ -106,22 +106,76 @@ def _degradation_md(rows, summary):
     lines += [
         f"Coverage index: **{summary['coverage']}**.",
         "",
-        "| Operation | Stand-in | Fidelity | What it does instead | Caveat |",
-        "|---|---|---|---|---|",
+        "| Operation | Stand-in | Fidelity | Runs as | What it does instead | Caveat |",
+        "|---|---|---|---|---|---|",
     ]
     for row in sorted(degraded, key=lambda r: r["id"]):
         detail = row["stand_in_detail"]
         lines.append(
             f"| `{row['id']}` | `{row['stand_in']}` | {detail['fidelity']} | "
+            f"{_runs_as(row['stand_in'], standins)} | "
             f"{detail['desc']} | {detail.get('caveat', '')} |"
         )
+
+    runnable, blocked = _executable_split(standins, {r["stand_in"] for r in degraded})
+    lines += ["", "## Running these steps", ""]
+    if runnable:
+        lines += [
+            "These steps have an executable stand-in in `scripts/`. Each takes a JSON "
+            "job on stdin and writes its artifacts to the working directory:",
+            "",
+            "```",
+            "python scripts/<name>.py   # job JSON on stdin, result JSON on stdout",
+            "```",
+            "",
+            f"Included: {', '.join(f'`scripts/{name}`' for name in runnable)}.",
+            "",
+        ]
+    if blocked:
+        lines += [
+            "These have **no** executable stand-in, and are reported rather than run:",
+            "",
+        ]
+        for standin_id, reason in blocked:
+            lines.append(f"- `{standin_id}` — {reason}")
+        lines.append("")
+
     lines += [
-        "",
         "> Degraded output must be reported as degraded. Presenting a stand-in as the "
         "intended result is the failure this table exists to prevent.",
         "",
     ]
     return "\n".join(lines)
+
+
+def _runs_as(standin_id, standins):
+    """The script name for a stand-in, or an explicit note that there is none."""
+    try:
+        entry = standins.get(standin_id)
+    except Exception:
+        return "not runnable"
+    spec = execute_mod.exec_spec(entry)
+    if spec is None:
+        return "not runnable"
+    return f"`scripts/{spec['script']}`"
+
+
+def _executable_split(standins, standin_ids):
+    """Split stand-in ids into (runnable script names, [(id, why-not)])."""
+    runnable = []
+    blocked = []
+    for standin_id in sorted(standin_ids):
+        try:
+            entry = standins.get(standin_id)
+        except Exception:
+            blocked.append((standin_id, "not present in the catalog"))
+            continue
+        spec = execute_mod.exec_spec(entry)
+        if spec is None:
+            blocked.append((standin_id, execute_mod.unavailable_reason(entry)))
+        else:
+            runnable.append(spec["script"])
+    return runnable, blocked
 
 
 def _blocked_md(questions, rows):
@@ -198,10 +252,10 @@ def _gates_md(rows, summary):
     return "\n".join(lines)
 
 
-def write_all(references_dir, inventory, profile, rows, summary, questions):
+def write_all(references_dir, inventory, profile, rows, summary, questions, standins):
     references_dir = Path(references_dir)
     write_text(references_dir / "bindings.md", _bindings_md(inventory, profile, rows, summary))
-    write_text(references_dir / "degradation.md", _degradation_md(rows, summary))
+    write_text(references_dir / "degradation.md", _degradation_md(rows, summary, standins))
     write_text(references_dir / "blocked.md", _blocked_md(questions, rows))
     write_text(references_dir / "gates.md", _gates_md(rows, summary))
     return references_dir
@@ -210,11 +264,13 @@ def write_all(references_dir, inventory, profile, rows, summary, questions):
 def write_scripts(skill_dir, rows, standins):
     """Copy only the stand-in scripts actually needed.
 
-    Catalog stand-ins are currently *descriptions* of what to do (usually an FFmpeg
-    invocation), not files, so in practice nothing is copied and no `scripts/` directory
-    is created. That is deliberate: repository code is never copied into an emitted
-    skill, which is a licensing decision recorded in the plan. If a catalog entry ever
-    ships a `script` file beside its metadata, this copies it.
+    A stand-in names its script in the catalog's `exec` block, and the file ships with
+    r2s under the same licence. Repository code is never copied into an emitted skill --
+    that is a licensing decision, and it is also the security boundary: the emitted
+    skill runs our reviewed scripts, never the analysed repo's.
+
+    A stand-in with no `exec` block contributes no script. `degradation.md` records why,
+    so an absent script is visible rather than mysterious.
     """
     used = sorted({r["stand_in"] for r in rows if r["stand_in"]})
     if not used:
@@ -223,11 +279,15 @@ def write_scripts(skill_dir, rows, standins):
     copied = []
     scripts_dir = Path(skill_dir) / "scripts"
     for standin_id in used:
-        source = config.STANDIN_DIR / standin_id / "script"
+        spec = execute_mod.exec_spec(standins.get(standin_id))
+        if spec is None:
+            continue
+        # Resolved through the executor's containment check rather than joined by hand.
+        source = execute_mod.script_path(spec["script"])
         if not source.is_file():
             continue
         scripts_dir.mkdir(parents=True, exist_ok=True)
-        target = scripts_dir / f"{standin_id}{source.suffix or '.sh'}"
+        target = scripts_dir / spec["script"]
         shutil.copyfile(source, target)
         copied.append(target.name)
     return copied

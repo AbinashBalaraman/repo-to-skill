@@ -66,6 +66,23 @@ def _fixtures():
     return out
 
 
+def _fixture_sources():
+    """Every fixture *repository* (a directory with source to extract), as (name, path).
+
+    Distinct from `_fixtures()`, which lists fixture *inventories*: a fixture that is
+    there to exercise a dialect has source files but no golden inventory, and it is
+    exactly the one whose determinism needs checking.
+    """
+    out = []
+    root = config.FIXTURE_DIR
+    if not root.is_dir():
+        return out
+    for path in sorted(root.glob("*/*")):
+        if path.is_dir() and path.name != "expected":
+            out.append((f"{path.parent.name}/{path.name}", path))
+    return out
+
+
 # ---------------------------------------------------------------- L1
 
 
@@ -262,12 +279,17 @@ def l5_stability():
     vocab = CapabilityVocab.load()
     standins = StandinCatalog.load()
 
-    fixture_src = config.FIXTURE_DIR / "cli-tool" / "feed-sync"
-    if not fixture_src.is_dir():
-        result.skip("cli-tool fixture not found")
+    # Every fixture repo, not just one. Each dialect is its own determinism surface: a
+    # new dialect that iterates a set, or orders by insertion, produces an inventory that
+    # differs between runs, and the diff would only show up on the repo that dialect
+    # handles. Running the check across all of them is what makes the guarantee cover
+    # the dialects rather than the one fixture that existed first.
+    sources = _fixture_sources()
+    if not sources:
+        result.skip("no fixture repositories found")
         return result
 
-    def extract_once():
+    def extract_once(fixture_src):
         snapshot = build_snapshot(fixture_src)
         result_profile = profile_repo(snapshot)
         draft, _ = pipeline_mod.extract(
@@ -283,12 +305,15 @@ def l5_stability():
             draft.pop(key, None)
         return json.dumps(draft, sort_keys=True)
 
-    first = extract_once()
-    second = extract_once()
-    if first != second:
-        result.fail("extraction is not deterministic: two runs produced different output")
+    unstable = []
+    for name, fixture_src in sources:
+        if extract_once(fixture_src) != extract_once(fixture_src):
+            unstable.append(name)
+
+    if unstable:
+        result.fail(f"extraction is not deterministic on: {', '.join(unstable)}")
     else:
-        result.note("two extraction runs are byte-identical")
+        result.note(f"extraction is byte-identical across two runs on {len(sources)} fixture(s)")
 
     # Emission stability: the same inventory must produce a byte-identical skill.
     skills, tmp = _emitted_skills()

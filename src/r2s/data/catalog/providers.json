@@ -4,7 +4,14 @@
   "providers": [
     {
       "id": "openai",
-      "match": { "pypi": ["openai"], "npm": ["openai"] },
+      "match": {
+        "pypi": ["openai"],
+        "npm": ["openai"],
+        "cargo": ["async-openai"],
+        "go": ["github.com/sashabaranov/go-openai"],
+        "maven": ["com.openai:openai-java"],
+        "gradle": ["com.openai:openai-java"]
+      },
       "capabilities": ["text.generate"],
       "credentials": [{ "name": "OPENAI_API_KEY", "kind": "apikey", "env": "OPENAI_API_KEY" }],
       "effect": "effectful-external",
@@ -12,7 +19,13 @@
     },
     {
       "id": "anthropic",
-      "match": { "pypi": ["anthropic"], "npm": ["@anthropic-ai/sdk"] },
+      "match": {
+        "pypi": ["anthropic"],
+        "npm": ["@anthropic-ai/sdk"],
+        "go": ["github.com/anthropics/anthropic-sdk-go"],
+        "maven": ["com.anthropic:anthropic-java"],
+        "gradle": ["com.anthropic:anthropic-java"]
+      },
       "capabilities": ["text.generate"],
       "credentials": [{ "name": "ANTHROPIC_API_KEY", "kind": "apikey", "env": "ANTHROPIC_API_KEY" }],
       "effect": "effectful-external",
@@ -38,7 +51,14 @@
     },
     {
       "id": "stripe",
-      "match": { "pypi": ["stripe"], "npm": ["stripe"] },
+      "match": {
+        "pypi": ["stripe"],
+        "npm": ["stripe"],
+        "cargo": ["async-stripe"],
+        "go": ["github.com/stripe/stripe-go"],
+        "maven": ["com.stripe:stripe-java"],
+        "gradle": ["com.stripe:stripe-java"]
+      },
       "capabilities": ["payment.charge"],
       "credentials": [{ "name": "STRIPE_API_KEY", "kind": "apikey", "env": "STRIPE_API_KEY" }],
       "effect": "effectful-external",
@@ -46,7 +66,13 @@
     },
     {
       "id": "sendgrid",
-      "match": { "pypi": ["sendgrid"] },
+      "match": {
+        "pypi": ["sendgrid"],
+        "cargo": ["sendgrid"],
+        "go": ["github.com/sendgrid/sendgrid-go"],
+        "maven": ["com.sendgrid:sendgrid-java"],
+        "gradle": ["com.sendgrid:sendgrid-java"]
+      },
       "capabilities": ["notify.message"],
       "credentials": [{ "name": "SENDGRID_API_KEY", "kind": "apikey", "env": "SENDGRID_API_KEY" }],
       "effect": "effectful-external",
@@ -54,7 +80,14 @@
     },
     {
       "id": "twilio",
-      "match": { "pypi": ["twilio"], "npm": ["twilio"] },
+      "match": {
+        "pypi": ["twilio"],
+        "npm": ["twilio"],
+        "cargo": ["twilio"],
+        "go": ["github.com/twilio/twilio-go"],
+        "maven": ["com.twilio.sdk:twilio"],
+        "gradle": ["com.twilio.sdk:twilio"]
+      },
       "capabilities": ["notify.message"],
       "credentials": [{ "name": "TWILIO_AUTH_TOKEN", "kind": "token", "env": "TWILIO_AUTH_TOKEN" }],
       "effect": "effectful-external",
@@ -62,7 +95,14 @@
     },
     {
       "id": "boto3",
-      "match": { "pypi": ["boto3", "botocore"], "npm": ["aws-sdk", "@aws-sdk/client-s3"] },
+      "match": {
+        "pypi": ["boto3", "botocore"],
+        "npm": ["aws-sdk", "@aws-sdk/client-s3"],
+        "cargo": ["aws-config"],
+        "go": ["github.com/aws/aws-sdk-go", "github.com/aws/aws-sdk-go-v2/config"],
+        "maven": ["software.amazon.awssdk:aws-core", "com.amazonaws:aws-java-sdk"],
+        "gradle": ["software.amazon.awssdk:aws-core", "com.amazonaws:aws-java-sdk"]
+      },
       "capabilities": ["storage.object", "data.query", "queue.publish", "notify.message"],
       "credentials": [{ "name": "AWS_ACCESS_KEY_ID", "kind": "token", "env": "AWS_ACCESS_KEY_ID" }],
       "effect": "effectful-external",
@@ -128,7 +168,18 @@
     },
     {
       "id": "redis",
-      "match": { "pypi": ["redis"], "npm": ["redis", "ioredis"] },
+      "match": {
+        "pypi": ["redis"],
+        "npm": ["redis", "ioredis"],
+        "cargo": ["redis"],
+        "go": [
+          "github.com/redis/go-redis/v9",
+          "github.com/redis/go-redis/v8",
+          "github.com/go-redis/redis"
+        ],
+        "maven": ["io.lettuce:lettuce-core", "redis.clients:jedis"],
+        "gradle": ["io.lettuce:lettuce-core", "redis.clients:jedis"]
+      },
       "capabilities": ["cache.read", "cache.write"],
       "credentials": [{ "name": "REDIS_URL", "kind": "password", "env": "REDIS_URL" }],
       "effect": "effectful-external",
@@ -162,7 +213,23 @@
     },
     {
       "id": "elasticsearch",
-      "match": { "pypi": ["elasticsearch"], "npm": ["@elastic/elasticsearch"] },
+      "match": {
+        "pypi": ["elasticsearch"],
+        "npm": ["@elastic/elasticsearch"],
+        "cargo": ["elasticsearch"],
+        "go": [
+          "github.com/elastic/go-elasticsearch/v8",
+          "github.com/elastic/go-elasticsearch/v7"
+        ],
+        "maven": [
+          "co.elastic.clients:elasticsearch-java",
+          "org.elasticsearch.client:elasticsearch-rest-high-level-client"
+        ],
+        "gradle": [
+          "co.elastic.clients:elasticsearch-java",
+          "org.elasticsearch.client:elasticsearch-rest-high-level-client"
+        ]
+      },
       "capabilities": ["search.index"],
       "credentials": [{ "name": "ELASTIC_URL", "kind": "password", "env": "ELASTIC_URL" }],
       "effect": "effectful-external",
@@ -212,7 +279,22 @@
     },
     {
       "id": "requests",
-      "match": { "pypi": ["requests", "httpx", "aiohttp", "urllib3"], "npm": ["axios", "node-fetch", "undici", "got"] },
+      "match": {
+        "pypi": ["requests", "httpx", "aiohttp", "urllib3"],
+        "npm": ["axios", "node-fetch", "undici", "got"],
+        "cargo": ["reqwest", "hyper", "ureq"],
+        "go": ["github.com/go-resty/resty/v2", "github.com/hashicorp/go-retryablehttp"],
+        "maven": [
+          "com.squareup.okhttp3:okhttp",
+          "org.apache.httpcomponents:httpclient",
+          "org.apache.httpcomponents.client5:httpclient5"
+        ],
+        "gradle": [
+          "com.squareup.okhttp3:okhttp",
+          "org.apache.httpcomponents:httpclient",
+          "org.apache.httpcomponents.client5:httpclient5"
+        ]
+      },
       "capabilities": ["http.request"],
       "credentials": [],
       "effect": "effectful-external",
@@ -250,6 +332,129 @@
       "capabilities": ["secret.read"],
       "credentials": [{ "name": "VAULT_TOKEN", "kind": "token", "env": "VAULT_TOKEN" }],
       "effect": "read-external",
+      "gate_hints": []
+    },
+    {
+      "id": "postgres",
+      "match": {
+        "cargo": ["tokio-postgres", "postgres"],
+        "go": ["github.com/jackc/pgx/v5", "github.com/lib/pq"],
+        "maven": ["org.postgresql:postgresql"],
+        "gradle": ["org.postgresql:postgresql"]
+      },
+      "capabilities": ["data.query", "data.write"],
+      "credentials": [{ "name": "DATABASE_URL", "kind": "password", "env": "DATABASE_URL" }],
+      "effect": "effectful-external",
+      "gate_hints": [],
+      "ambiguous": true,
+      "ambiguous_note": "Reads and writes share one connection pool. Resolve by tracing SELECT versus INSERT/UPDATE."
+    },
+    {
+      "id": "mysql",
+      "match": {
+        "cargo": ["mysql", "mysql_async"],
+        "go": ["github.com/go-sql-driver/mysql"],
+        "maven": ["com.mysql:mysql-connector-j", "mysql:mysql-connector-java"],
+        "gradle": ["com.mysql:mysql-connector-j", "mysql:mysql-connector-java"]
+      },
+      "capabilities": ["data.query", "data.write"],
+      "credentials": [{ "name": "DATABASE_URL", "kind": "password", "env": "DATABASE_URL" }],
+      "effect": "effectful-external",
+      "gate_hints": [],
+      "ambiguous": true,
+      "ambiguous_note": "Reads and writes share one connection pool. Resolve by tracing SELECT versus INSERT/UPDATE."
+    },
+    {
+      "id": "mongo",
+      "match": {
+        "cargo": ["mongodb"],
+        "go": ["go.mongodb.org/mongo-driver"],
+        "maven": ["org.mongodb:mongodb-driver-sync", "org.mongodb:mongodb-driver-legacy"],
+        "gradle": ["org.mongodb:mongodb-driver-sync", "org.mongodb:mongodb-driver-legacy"]
+      },
+      "capabilities": ["data.query", "data.write"],
+      "credentials": [{ "name": "MONGODB_URI", "kind": "password", "env": "MONGODB_URI" }],
+      "effect": "effectful-external",
+      "gate_hints": [],
+      "ambiguous": true,
+      "ambiguous_note": "Find and update share one collection handle. Resolve by inspecting the operation."
+    },
+    {
+      "id": "s3",
+      "match": {
+        "cargo": ["aws-sdk-s3"],
+        "go": [
+          "github.com/aws/aws-sdk-go-v2/service/s3",
+          "github.com/aws/aws-sdk-go/service/s3"
+        ],
+        "maven": ["software.amazon.awssdk:s3", "com.amazonaws:aws-java-sdk-s3"],
+        "gradle": ["software.amazon.awssdk:s3", "com.amazonaws:aws-java-sdk-s3"]
+      },
+      "capabilities": ["storage.object"],
+      "credentials": [{ "name": "AWS_ACCESS_KEY_ID", "kind": "token", "env": "AWS_ACCESS_KEY_ID" }],
+      "effect": "effectful-external",
+      "gate_hints": []
+    },
+    {
+      "id": "kafka",
+      "match": {
+        "cargo": ["rdkafka", "kafka"],
+        "go": [
+          "github.com/segmentio/kafka-go",
+          "github.com/IBM/sarama",
+          "github.com/confluentinc/confluent-kafka-go/v2"
+        ],
+        "maven": ["org.apache.kafka:kafka-clients", "org.springframework.kafka:spring-kafka"],
+        "gradle": ["org.apache.kafka:kafka-clients", "org.springframework.kafka:spring-kafka"]
+      },
+      "capabilities": ["queue.publish", "queue.consume"],
+      "credentials": [],
+      "effect": "effectful-external",
+      "gate_hints": []
+    },
+    {
+      "id": "rabbitmq",
+      "match": {
+        "cargo": ["lapin", "amiquip"],
+        "go": ["github.com/rabbitmq/amqp091-go", "github.com/streadway/amqp"],
+        "maven": ["com.rabbitmq:amqp-client", "org.springframework.amqp:spring-rabbit"],
+        "gradle": ["com.rabbitmq:amqp-client", "org.springframework.amqp:spring-rabbit"]
+      },
+      "capabilities": ["queue.publish", "queue.consume"],
+      "credentials": [],
+      "effect": "effectful-external",
+      "gate_hints": []
+    },
+    {
+      "id": "nats",
+      "match": {
+        "cargo": ["async-nats", "nats"],
+        "go": ["github.com/nats-io/nats.go"],
+        "maven": ["io.nats:jnats"],
+        "gradle": ["io.nats:jnats"]
+      },
+      "capabilities": ["queue.publish", "queue.consume"],
+      "credentials": [],
+      "effect": "effectful-external",
+      "gate_hints": []
+    },
+    {
+      "id": "opensearch",
+      "match": {
+        "cargo": ["opensearch"],
+        "go": ["github.com/opensearch-project/opensearch-go"],
+        "maven": [
+          "org.opensearch.client:opensearch-java",
+          "org.opensearch.client:opensearch-rest-high-level-client"
+        ],
+        "gradle": [
+          "org.opensearch.client:opensearch-java",
+          "org.opensearch.client:opensearch-rest-high-level-client"
+        ]
+      },
+      "capabilities": ["search.index"],
+      "credentials": [{ "name": "OPENSEARCH_URL", "kind": "password", "env": "OPENSEARCH_URL" }],
+      "effect": "effectful-external",
       "gate_hints": []
     }
   ],

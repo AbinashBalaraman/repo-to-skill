@@ -16,6 +16,73 @@ Because a release changes the emitted artifact and the vocabulary, note that:
 
 ### Added
 
+- **Executable stand-ins (closes the MCP gap).** A catalog stand-in may now declare an
+  `exec` block naming a script that ships with r2s, so a stand-in is something that can
+  be *run* rather than only described. Eight of the nine stand-ins are runnable;
+  `reasoning-without-sources` is not, because it is a model call and r2s is stdlib-only
+  and offline — the catalog records that reason instead of shipping a script that
+  pretends.
+- **The stand-in executor (`src/r2s/execute/`).** argv-only invocation with no
+  `shell=True`, the job passed as JSON on stdin so there is no argument-injection
+  surface, a timeout bounded by a hard ceiling, artifact paths resolved and confined to
+  the working directory, and redacted output. Every prerequisite failure — missing tool,
+  missing required input, unknown input, timeout, non-zero exit — is an error that
+  writes nothing. It never produces a placeholder artifact and calls it success.
+- **`r2s run <report> --operation <id> | --all`.** Executes the stand-in-backed
+  operations of a routed report and writes their artifacts. `--dry-run` reports what
+  would run. It exits non-zero if a required operation did not execute, and does not
+  fail on an optional one.
+- **`r2s standins`.** Lists the catalog and says, per stand-in, whether it can run in
+  this environment and which declared tool is missing if not.
+- **`r2s digest` and `r2s extract --llm-proposals`.** T4 was implemented in the pipeline
+  but unreachable from the CLI, so the mode the README described could not actually be
+  used. `digest` writes the structured summary to hand to your own model; `extract
+  --llm-proposals` applies what comes back. r2s still never calls a model.
+- **Rust, Go and Java/Kotlin dialects (M2 completion).** clap commands and axum/actix
+  routes; cobra commands and net/http, gin, echo, chi and fiber handlers; Spring
+  controllers, listeners, `@Scheduled`, and Maven/Gradle coordinates. Extraction now
+  covers **20 dialects across 6 package ecosystems**.
+- **Dependency reading for `cargo`, `go`, `maven` and `gradle`,** so T2 can match
+  non-Python dependencies at all. Previously only `pypi` and `npm` were read, which meant
+  the provider catalog could never fire for a Rust, Go or Java repo.
+- **`exec` contract validation.** A catalog entry whose script is not shipped, whose
+  input declares an unknown type, or which declares neither `exec` nor a reason it cannot
+  run, now fails at load rather than at the point of use.
+- **The MCP server executes.** `tools/call` runs the stand-in and returns its artifacts.
+  Where it cannot run, the result says so with `status: unavailable` and the reason, and
+  the note routes the caller to `ask-user`. A caller can always distinguish "ran" from
+  "could not run".
+- **Emitted skills ship the scripts they need.** `scripts/` now contains the stand-in
+  scripts an operation actually uses — copied verbatim from r2s's own catalog, so no
+  repository code is redistributed and the skill runs reviewed code.
+  `references/degradation.md` names the script per operation and states which stand-ins
+  have none and why.
+
+### Fixed
+
+- **A placeholder requirement was reported at `medium` confidence.** An operation whose
+  requirement could not be traced or declared gets `external.call` as an explicit
+  placeholder; the intent was always `low`, but the placeholder signal was carried by
+  reusing `ambiguous`, and a declaration in the evidence then lifted it to `medium` with
+  a note blaming an *ambiguous provider match* that had not occurred — a confident wrong
+  requirement with a false explanation. `fuse` now takes a distinct `placeholder` signal
+  and returns `low` with an accurate note.
+- **Framework packages generated spurious requirements.** `axum`, `clap`, `tokio`,
+  `serde`, `gin`, `cobra`, `spring-boot-starter-web` and similar are how a repo is built,
+  not capabilities it needs, so they are now ignored as `flask` and `express` already
+  were. Without this, every route in a Rust service carried an `external.call`.
+- **`session.execute(...)` was briefly mapped to `data.query`,** which would have
+  reported a `DELETE` as read-only and let it lose its gate: fail-open in a fail-closed
+  design. It now matches only when the argument is recognisably a read.
+
+### Changed
+
+- **`r2s convert --emit` no longer leaves `scripts/` empty.** See above.
+- **`mcp/server.py` renamed its server identity** from `r2s-mcp-spike` to `r2s-mcp`, and
+  is no longer described as a spike. It is a working server with documented limits.
+
+### Added previously in this cycle
+
 - **The emitter (M6).** `r2s convert --emit <dir>` writes an Agent Skills package:
   `SKILL.md` plus `references/{bindings,degradation,blocked,gates}.md`. It refuses to
   emit from a draft inventory unless `--accept-unreviewed` is passed, in which case the

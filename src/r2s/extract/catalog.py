@@ -19,6 +19,14 @@ from ..util.io import load_json
 
 # Tooling, frameworks and build systems. Their presence says something about the repo
 # class, but nothing about a capability, so they must not generate requirements.
+#
+# This is one flat set checked against the package name as read from whichever
+# ecosystem it came from, so a name shared across ecosystems is ignored in all of them.
+# That is a deliberate trade: the alternative is a per-ecosystem table that has to be
+# kept in step with four manifests, and the failure mode of the flat set is a
+# *missing* requirement for a package that happens to collide with a framework name.
+# A missing requirement is visible in the inventory as an unresolved dependency; a
+# spurious `external.call` on every route of every Rust service is not.
 IGNORED_PACKAGES = frozenset(
     {
         "pytest",
@@ -83,6 +91,126 @@ IGNORED_PACKAGES = frozenset(
         "structlog",
         "tenacity",
         "retrying",
+        # --- Rust (cargo) -------------------------------------------------------------
+        # Web frameworks and async runtimes. A framework is how the repo is built, not
+        # a capability it needs; ignoring it is what stops `axum` becoming an
+        # `external.call` requirement on every route.
+        "axum",
+        "actix-web",
+        "actix",
+        "rocket",
+        "warp",
+        "poem",
+        "tide",
+        "salvo",
+        "hyper",
+        "tower",
+        "tower-http",
+        "tonic",
+        "tonic-build",
+        "prost",
+        "http",
+        "http-body",
+        "http-body-util",
+        "tokio",
+        "tokio-util",
+        "async-std",
+        "smol",
+        "futures",
+        "futures-util",
+        "async-trait",
+        "mio",
+        # CLI parsing, serialisation, logging and error plumbing.
+        "clap",
+        "clap-derive",
+        "structopt",
+        "argh",
+        "serde",
+        "serde_json",
+        "serde_yaml",
+        "serde_derive",
+        "tracing",
+        "tracing-subscriber",
+        "log",
+        "env_logger",
+        "anyhow",
+        "thiserror",
+        "eyre",
+        "color-eyre",
+        # Build and test tooling.
+        "criterion",
+        "proptest",
+        "quickcheck",
+        "mockall",
+        "rstest",
+        "tempfile",
+        "assert_cmd",
+        "predicates",
+        "insta",
+        "quote",
+        "syn",
+        "proc-macro2",
+        "cc",
+        "bindgen",
+        # --- Go ------------------------------------------------------------------------
+        # Module paths, because that is what `read_go_deps` normalises to.
+        "github.com/gin-gonic/gin",
+        "github.com/labstack/echo/v4",
+        "github.com/go-chi/chi/v5",
+        "github.com/gofiber/fiber/v2",
+        "github.com/gorilla/mux",
+        "github.com/gorilla/websocket",
+        "github.com/gorilla/sessions",
+        "github.com/spf13/cobra",
+        "github.com/spf13/pflag",
+        "github.com/urfave/cli/v2",
+        "github.com/alecthomas/kong",
+        "github.com/spf13/viper",
+        "github.com/joho/godotenv",
+        "github.com/kelseyhightower/envconfig",
+        "github.com/stretchr/testify",
+        "github.com/stretchr/objx",
+        "github.com/onsi/ginkgo/v2",
+        "github.com/onsi/gomega",
+        "go.uber.org/mock",
+        "github.com/golang/mock",
+        "go.uber.org/zap",
+        "github.com/sirupsen/logrus",
+        "github.com/rs/zerolog",
+        "github.com/google/uuid",
+        "github.com/pkg/errors",
+        "golang.org/x/sync",
+        "golang.org/x/time",
+        # --- JVM (maven / gradle) ------------------------------------------------------
+        # `groupId:artifactId` for Maven, `group:artifact` for Gradle.
+        "org.springframework.boot:spring-boot-starter-web",
+        "org.springframework.boot:spring-boot-starter-test",
+        "org.springframework.boot:spring-boot-starter-parent",
+        "org.springframework.boot:spring-boot-starter",
+        "org.springframework.boot:spring-boot-starter-actuator",
+        "org.springframework.boot:spring-boot-starter-validation",
+        "org.springframework.boot:spring-boot-devtools",
+        "org.springframework:spring-web",
+        "org.springframework:spring-webmvc",
+        "org.springframework:spring-context",
+        "org.springframework:spring-core",
+        "org.springframework:spring-beans",
+        "org.springframework:spring-tx",
+        "org.junit.jupiter:junit-jupiter",
+        "org.junit.jupiter:junit-jupiter-api",
+        "org.junit.jupiter:junit-jupiter-engine",
+        "org.mockito:mockito-core",
+        "org.assertj:assertj-core",
+        "org.projectlombok:lombok",
+        "com.fasterxml.jackson.core:jackson-databind",
+        "ch.qos.logback:logback-classic",
+        "org.slf4j:slf4j-api",
+        "org.hibernate.validator:hibernate-validator",
+        "org.springframework.boot:spring-boot",
+        "org.springframework.boot:spring-boot-autoconfigure",
+        "org.springframework.boot:spring-boot-starter-data-jpa",
+        "org.springframework.boot:spring-boot-starter-json",
+        "io.spring.dependency-management",
     }
 )
 

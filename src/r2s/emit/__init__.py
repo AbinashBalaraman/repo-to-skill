@@ -90,7 +90,9 @@ def emit_skill(inventory, profile, out_dir, vocab, standins, accept_unreviewed=F
     frontmatter, body = skill_md.render(inventory, profile, rows, summary, warnings)
     (skill_dir / "SKILL.md").write_text(frontmatter + "\n\n" + body + "\n", encoding="utf-8")
 
-    references_mod.write_all(skill_dir / "references", inventory, profile, rows, summary, questions)
+    references_mod.write_all(
+        skill_dir / "references", inventory, profile, rows, summary, questions, standins
+    )
 
     # Only stand-in scripts that are actually used get a scripts/ directory.
     used_scripts = references_mod.write_scripts(skill_dir, rows, standins)

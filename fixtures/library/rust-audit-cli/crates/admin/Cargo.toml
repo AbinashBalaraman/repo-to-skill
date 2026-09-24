@@ -1,0 +1,12 @@
+[package]
+name = "admin"
+version = "0.4.0"
+edition = "2021"
+description = "Admin HTTP surface for the audit service"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "net"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde.workspace = true
+tracing.workspace = true

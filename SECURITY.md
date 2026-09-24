@@ -58,9 +58,23 @@ option), validates the SHA against a hex pattern, and terminates option parsing 
 evaluated, or executed. The only subprocess is `git`, invoked as described above.
 `subprocess` is never called with `shell=True`.
 
+**Execution is confined to r2s's own scripts.** `r2s run` and the MCP server execute a
+stand-in, and a stand-in is a script that ships with `r2s` under the same MIT licence —
+never repository code. `execute/` resolves the script path through a containment check,
+invokes it with an argv list (`shell=True` is never used, so no input can become shell
+syntax), and passes the job as JSON on stdin rather than as arguments, so there is no
+argument-injection surface at all. Reported artifacts are resolved and checked to stay
+inside the operation's working directory. Output is redacted and truncated before it
+reaches a report or a model. A declared prerequisite that is missing, a timeout, or a
+non-zero exit is an error: the executor never writes a placeholder artifact and calls it
+success.
+
 **Bundled data is validated at load.** Catalogs, stand-in definitions and harness
 profiles are checked against the capability vocabulary on startup; an unknown capability
 ID in a provider entry is a hard error rather than a silent widening of a requirement.
+The stand-in catalog's `exec` contract is validated too: a declared script that is not
+shipped, an input with an unknown type, or a stand-in that declares neither an `exec`
+block nor a reason it cannot run, all fail at load rather than at the point of use.
 
 ## Known gaps
 
@@ -78,12 +92,22 @@ that admits limits.
 - **The emitter writes repository-derived prose into `references/`.** That path is new
   and is the most likely place for a leak to appear. It is scanned on emission and in
   CI, but the scan is only as good as its patterns.
-- **The MCP server does not execute and holds no secrets.** `mcp/server.py` returns
-  routing decisions; credentials are read from the environment and never logged. It is
-  a spike and has not been security-reviewed.
+- **Stand-ins run without OS-level isolation.** `execute/` invokes the script as a child
+  process with the caller's privileges and environment. The scripts are reviewed and
+  owned by this project, and repository code is never executed — but this is not a
+  sandbox, and it should not be treated as one if `r2s` is ever pointed at stand-in
+  scripts the project does not own. Credentials reach a stand-in through the inherited
+  environment, which is how a step that needs a secret gets one; the executor never logs
+  the environment and redacts the child's output.
+- **The MCP server holds no secrets and leaks none, but has not been independently
+  reviewed.** It executes stand-ins through `execute/` and emits credential *names* only;
+  a missing credential fails the call closed before the stand-in runs. It remains a
+  single-maintainer component.
 - **`--catalog-extra` is not sandboxed.** Catalog data is validated for schema
   conformance and capability validity, but a catalog is trusted input: do not point it
-  at a file you would not otherwise run.
+  at a file you would not otherwise run. A catalog entry that declares an `exec` block
+  names a script, and that script is executed — so a catalog is code-adjacent input in a
+  way it was not before stand-ins became runnable.
 
 ## Out of scope
 

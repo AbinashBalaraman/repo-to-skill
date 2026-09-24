@@ -14,7 +14,10 @@ hint.
 
 from .agent_tools import ToolDecoratorDialect, ToolManifestDialect
 from .cli_python import CliPythonDialect
+from .go import GoDialect
 from .infra import AnsibleDialect, KubernetesDialect, TerraformDialect
+from .jvm import JvmDialect
+from .rust import RustDialect
 from .web import OpenApiDialect, ProtoServiceDialect, WebJsDialect, WebPythonDialect
 from .workflow import (
     ComposeServiceDialect,
@@ -48,6 +51,10 @@ _REGISTRY = [
     TerraformDialect(),
     KubernetesDialect(),
     AnsibleDialect(),
+    # Languages T1 cannot trace: the declaration is the operation.
+    RustDialect(),
+    GoDialect(),
+    JvmDialect(),
 ]
 
 

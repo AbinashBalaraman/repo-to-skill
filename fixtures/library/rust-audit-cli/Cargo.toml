@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = ["crates/audit", "crates/admin"]
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"

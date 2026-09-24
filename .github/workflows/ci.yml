@@ -76,6 +76,15 @@ jobs:
               "harness-profiles/full.json",
               "harness-profiles/workbuddy.json",
               "schemas/inventory.schema.json",
+              # Stand-in scripts are executable payload, not just data: a stand-in whose
+              # script is missing from the wheel is a stand-in that cannot run.
+              "catalog/stand-ins/scripts/srt_from_text.py",
+              "catalog/stand-ins/scripts/gradient_card.py",
+              "catalog/stand-ins/scripts/ken_burns.py",
+              "catalog/stand-ins/scripts/vertical_cut.py",
+              "catalog/stand-ins/scripts/flag_unverifiable.py",
+              "catalog/stand-ins/scripts/deferred_handoff.py",
+              "catalog/stand-ins/scripts/no_op_report.py",
           ]
           root = files("r2s").joinpath("data")
           missing = [r for r in required if not root.joinpath(r).is_file()]
@@ -83,6 +92,37 @@ jobs:
               raise SystemExit(f"missing from the wheel: {missing}")
           print(f"all {len(required)} packaged data files present")
           PY
+
+      - name: Every stand-in's declared script resolves from the installed package
+        working-directory: /tmp
+        run: |
+          /tmp/clean/bin/r2s standins
+          /tmp/clean/bin/python - <<'PY'
+          from r2s import execute
+          from r2s.capability.vocab import StandinCatalog
+
+          catalog = StandinCatalog.load()
+          runnable = 0
+          for entry in catalog.all():
+              spec = execute.exec_spec(entry)
+              if spec is None:
+                  # Must still say why, or the gap is silent.
+                  assert execute.unavailable_reason(entry), entry["id"]
+                  continue
+              assert execute.script_path(spec["script"]).is_file(), entry["id"]
+              runnable += 1
+          print(f"{runnable} stand-in(s) resolve to a shipped script")
+          PY
+
+      - name: A stand-in actually runs from the installed package
+        working-directory: /tmp
+        run: |
+          mkdir -p run-out
+          echo '{"inputs": {"text": "First sentence. Second one here."}, "out_dir": "run-out"}' \
+            | /tmp/clean/bin/python \
+                "$(/tmp/clean/bin/python -c 'from r2s import execute; print(execute.script_path("srt_from_text.py"))')"
+          test -f run-out/subtitles.srt
+          grep -q -- '-->' run-out/subtitles.srt
 
       - name: Extract a repository using only the installed package
         working-directory: /tmp
@@ -138,6 +178,101 @@ jobs:
           python -m r2s extract fixtures/cli-tool/feed-sync --out /tmp/run-b
           diff /tmp/run-a/inventory.draft.json /tmp/run-b/inventory.draft.json
 
+      - name: Every fixture repo extracts without error
+        run: |
+          for fixture in fixtures/*/*; do
+            case "$fixture" in */expected) continue ;; esac
+            [ -d "$fixture" ] || continue
+            echo "--- $fixture"
+            python -m r2s extract "$fixture" --out "/tmp/fx-$(basename "$fixture")"
+          done
+
+      - name: The Rust, Go and Java dialects fire on their fixtures
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          import sys
+          import tempfile
+          from pathlib import Path
+
+          expected = {
+              "fixtures/library/rust-audit-cli": "rust",
+              "fixtures/library/go-queue-runner": "go",
+              "fixtures/library/spring-orders-api": "jvm",
+          }
+          failures = []
+          for fixture, dialect in expected.items():
+              with tempfile.TemporaryDirectory() as tmp:
+                  subprocess.run(
+                      [sys.executable, "-m", "r2s", "extract", fixture, "--out", tmp],
+                      check=True,
+                      capture_output=True,
+                  )
+                  draft = json.loads(Path(tmp, "inventory.draft.json").read_text())
+              ran = draft["diagnostics"]["dialects_ran"]
+              ops = len(draft["operations"])
+              if dialect not in ran:
+                  failures.append(f"{fixture}: {dialect} did not run (ran: {ran})")
+              if ops < 2:
+                  failures.append(f"{fixture}: only {ops} operation(s) extracted")
+              print(f"{fixture}: {dialect} ran, {ops} operation(s)")
+          if failures:
+              raise SystemExit("\n".join(failures))
+          PY
+
+      - name: Executing a stand-in writes a real artifact
+        run: |
+          rm -rf /tmp/exec-out
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from r2s import execute
+          from r2s.capability.vocab import StandinCatalog
+
+          result = execute.run(
+              "srt-from-text",
+              StandinCatalog.load(),
+              inputs={"text": "One sentence. And a second one here."},
+              workdir=Path("/tmp/exec-out"),
+              operation="caption-audio",
+          )
+          assert result.executed, result.reason
+          assert [a["path"] for a in result.artifacts] == ["subtitles.srt"], result.artifacts
+          assert Path("/tmp/exec-out/subtitles.srt").is_file()
+          print("stand-in executed and wrote its artifact")
+          PY
+
+      - name: An unrunnable stand-in fails closed and writes nothing
+        run: |
+          rm -rf /tmp/exec-blocked
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from r2s import execute
+          from r2s.capability.vocab import StandinCatalog
+
+          catalog = StandinCatalog.load()
+
+          # A stand-in with no exec contract must report a reason, never run.
+          result = execute.run("reasoning-without-sources", catalog, workdir=Path("/tmp/exec-blocked"))
+          assert not result.executed
+          assert result.status == execute.STATUS_UNAVAILABLE
+          assert result.reason, "an unrunnable stand-in must say why"
+          assert result.artifacts == []
+          assert not Path("/tmp/exec-blocked").exists() or not any(
+              Path("/tmp/exec-blocked").iterdir()
+          ), "a blocked stand-in must not create output"
+
+          # A missing required input must also fail closed.
+          bad = execute.run("srt-from-text", catalog, inputs={}, workdir=Path("/tmp/exec-blocked"))
+          assert bad.status == execute.STATUS_FAILED, bad.status
+          assert bad.artifacts == []
+          print("both fail-closed paths hold")
+          PY
+
   eval:
     name: eval (L1-L5)
     runs-on: ubuntu-latest
@@ -160,6 +295,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -e ".[dev]"
-      - run: ruff check src tests
-      - run: ruff format --check src tests
+      # `eval` and `mcp` are first-party code and are held to the same bar as `src`.
+      - run: ruff check src tests eval mcp
+      - run: ruff format --check src tests eval mcp
       - run: mypy

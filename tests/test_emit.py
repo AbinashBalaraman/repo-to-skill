@@ -85,9 +85,40 @@ class TestEmittedShape(EmitBase):
                 self.assertEqual(len(path.relative_to(skill_dir / "references").parts), 1)
 
     def test_no_repository_code_is_copied(self):
-        """Stand-ins come from the catalog, so no repo source is redistributed."""
+        """Only r2s's own stand-in scripts ship; nothing from the analysed repo does.
+
+        This is the licensing boundary and the security boundary at once: an emitted
+        skill runs scripts r2s reviewed, never the source of the repository it describes.
+        """
+        from r2s import execute
+
         skill_dir, _, _ = self.emit()
-        self.assertFalse((skill_dir / "scripts").exists())
+        scripts_dir = skill_dir / "scripts"
+        if not scripts_dir.is_dir():
+            return  # nothing stand-in-bound on this profile; nothing to check
+
+        declared = set()
+        for entry in self.standins.all():
+            spec = execute.exec_spec(entry)
+            if spec:
+                declared.add(spec["script"])
+
+        copied = sorted(p.name for p in scripts_dir.iterdir())
+        self.assertTrue(copied, "a scripts/ directory was created but is empty")
+        for name in copied:
+            self.assertIn(name, declared, f"{name} is not a catalog stand-in script")
+            # And byte-identical to the shipped original, so it was copied, not rewritten.
+            self.assertEqual(
+                (scripts_dir / name).read_bytes(),
+                (execute.SCRIPT_DIR / name).read_bytes(),
+            )
+
+    def test_degradation_names_the_script_and_the_reason_it_cannot_run(self):
+        skill_dir, _, _ = self.emit()
+        text = (skill_dir / "references" / "degradation.md").read_text(encoding="utf-8")
+        self.assertIn("## Running these steps", text)
+        if "not runnable" in text:
+            self.assertIn("why", text.lower())
 
     def test_no_secrets_in_the_emitted_skill(self):
         skill_dir, _, _ = self.emit()

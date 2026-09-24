@@ -15,6 +15,7 @@ used by the CLI and the eval.
 
 import re
 
+from .. import execute
 from ..capability.vocab import VocabError
 
 ID_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -251,6 +252,8 @@ def validate_standin_catalog(standins, vocab):
         if not entry.get("desc"):
             failures.append(f"{where}: missing desc")
 
+        failures.extend(_validate_exec(entry, where))
+
     for capability, standin_id in (standins.defaults or {}).items():
         if not vocab.has(capability):
             failures.append(f"stand-in default: unknown capability {capability!r}")
@@ -260,3 +263,75 @@ def validate_standin_catalog(standins, vocab):
             )
 
     return failures
+
+
+def _validate_exec(entry, where):
+    """Validate a stand-in's `exec` contract, or require a stated reason there is none.
+
+    Two failure modes this exists to prevent, both silent without it:
+
+      * an entry declares a script that is not shipped, so the stand-in looks runnable
+        and fails at the point of use;
+      * an entry declares neither `exec` nor `exec_unavailable`, so a caller cannot tell
+        "this cannot be run" from "somebody forgot".
+
+    Declared inputs are checked for shape only. Their *values* are validated at run time
+    by the executor, which is the single authority on what an input may be.
+    """
+    failures = []
+    spec = execute.exec_spec(entry)
+
+    if spec is None:
+        declared = entry.get("exec_unavailable")
+        if not isinstance(declared, str) or not declared.strip():
+            failures.append(
+                f"{where}: declares no usable `exec` block and gives no "
+                f"`exec_unavailable` reason. A stand-in that cannot be run must say why."
+            )
+        return failures
+
+    if entry.get("exec_unavailable"):
+        failures.append(
+            f"{where}: declares both `exec` and `exec_unavailable`; it either runs or it "
+            f"does not, and saying both is a contradiction"
+        )
+
+    try:
+        path = execute.script_path(spec["script"])
+    except execute.ExecError as exc:
+        failures.append(f"{where}: {exc}")
+        return failures
+
+    if not path.is_file():
+        failures.append(f"{where}: script {spec['script']!r} is not shipped with r2s")
+
+    for tool in spec["requires_tools"]:
+        if not isinstance(tool, str) or not tool.strip():
+            failures.append(f"{where}: requires_tools must be non-empty strings")
+
+    for name, declaration in sorted(spec["inputs"].items()):
+        if not isinstance(declaration, dict):
+            failures.append(f"{where}: input {name!r} must be an object")
+            continue
+        kind = declaration.get("type")
+        if kind not in ("string", "number", "integer"):
+            failures.append(f"{where}: input {name!r} has unknown type {kind!r}")
+        elif "default" in declaration and not _default_matches(declaration["default"], kind):
+            failures.append(f"{where}: input {name!r} default is not a {kind}")
+
+    return failures
+
+
+def _default_matches(value, kind):
+    """Whether a declared input default has the type its declaration claims.
+
+    `bool` is excluded from the numeric kinds on purpose: in JSON `true` is not a number,
+    and accepting it would let a default of `true` reach a script expecting a duration.
+    """
+    if kind == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if kind == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if kind == "string":
+        return isinstance(value, str)
+    return True

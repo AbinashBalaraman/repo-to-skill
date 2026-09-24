@@ -5,10 +5,12 @@ inventory, never a draft, so review has to be a step the user can actually take.
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from . import __version__, config
+from . import execute as execute_mod
 from . import profiler as profiler_pkg
 from .capability import invariants, report, router
 from .capability import profiles as profiles_mod
@@ -17,6 +19,7 @@ from .capability.vocab import CapabilityVocab, StandinCatalog, VocabError
 from .emit import EmitError, emit_skill
 from .extract import catalog as catalog_mod
 from .extract import effects as effects_mod
+from .extract import gapfill as gapfill_mod
 from .extract import pipeline as pipeline_mod
 from .extract import review as review_mod
 from .source import build_snapshot
@@ -105,7 +108,14 @@ def cmd_extract(args):
     print(f"entrypoints: {len(result.entrypoints)}")
 
     draft, warnings = pipeline_mod.extract(
-        snapshot, result, vocab, providers, effects_catalog, standins, source=source
+        snapshot,
+        result,
+        vocab,
+        providers,
+        effects_catalog,
+        standins,
+        source=source,
+        llm_proposals=args.llm_proposals,
     )
 
     verdict = profiler_pkg.assess_suitability(snapshot, result, draft["operations"])
@@ -242,6 +252,162 @@ def cmd_scan(args):
     return 1 if findings else 0
 
 
+def cmd_digest(args):
+    """Write the T4 digest: the compact summary a user hands to their own model.
+
+    r2s never calls a model -- it is stdlib-only and offline, which is what makes it safe
+    to run over an untrusted repository. T4 is therefore a two-step handoff: this command
+    produces the input, the user's model produces proposals, and `extract
+    --llm-proposals` applies them. The digest carries the normalised inventory only: no
+    file contents, so the model is never handed the repository.
+    """
+    draft = load_json(args.draft)
+    payload = gapfill_mod.digest(draft)
+    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    if args.out:
+        path = write_text(Path(args.out), text)
+        print(f"wrote {path}")
+        print(
+            f"  {len(payload['operations'])} operation(s). Hand this to a model, then "
+            f"apply what it returns with:\n"
+            f"    r2s extract <repo> --llm-proposals <proposals.json>"
+        )
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def cmd_standins(args):
+    """List the catalog and say, per stand-in, whether it can actually be run."""
+    _, standins, _ = _context()
+    rows = execute_mod.describe(standins)
+    width = max(len(row["id"]) for row in rows)
+    runnable = 0
+    for row in rows:
+        if row["runnable"] and row["tools_present"]:
+            state = "runnable"
+            runnable += 1
+        elif row["runnable"]:
+            state = "blocked: missing " + ", ".join(row["requires_tools"])
+        else:
+            state = "not runnable"
+        print(f"  {row['id']:<{width}}  {row['capability']:<18} fid={row['fidelity']:<5} {state}")
+        if not row["runnable"]:
+            print(f"  {'':<{width}}  why: {row['reason']}")
+    print(f"\n{len(rows)} stand-in(s); {runnable} runnable in this environment")
+    return 0
+
+
+def cmd_run(args):
+    """Execute the stand-in-backed operations of a routed report.
+
+    This is the step that turns a report into output. It refuses to invent anything: an
+    operation whose stand-in is not runnable is reported as such and counted as a gap,
+    never quietly skipped.
+    """
+    _, standins, _ = _context()
+    report_data = load_json(args.report)
+    rows = report_data.get("rows") or []
+
+    candidates = [row for row in rows if row.get("binding") == "script" and row.get("stand_in")]
+
+    if args.operation:
+        wanted = set(args.operation)
+        known = {row["id"] for row in candidates}
+        unknown = sorted(wanted - known)
+        if unknown:
+            available = ", ".join(sorted(known)) or "none"
+            print(
+                f"error: no stand-in-backed operation named {', '.join(unknown)}.\n"
+                f"  operations with a runnable binding: {available}",
+                file=sys.stderr,
+            )
+            return 2
+        selected = [row for row in candidates if row["id"] in wanted]
+    elif args.all:
+        selected = candidates
+    else:
+        print(
+            "error: pass --operation ID (repeatable) or --all to choose what to run.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if not selected:
+        print("nothing to run: the report has no stand-in-backed operations.")
+        return 0
+
+    inputs = {}
+    if args.inputs_file:
+        inputs = load_json(args.inputs_file)
+        if not isinstance(inputs, dict):
+            print("error: --inputs-file must contain a JSON object", file=sys.stderr)
+            return 2
+    if args.inputs:
+        try:
+            inline = json.loads(args.inputs)
+        except json.JSONDecodeError as exc:
+            print(f"error: --inputs is not valid JSON: {exc}", file=sys.stderr)
+            return 2
+        if not isinstance(inline, dict):
+            print("error: --inputs must be a JSON object", file=sys.stderr)
+            return 2
+        inputs = {**inputs, **inline}
+
+    out_root = Path(args.out)
+    results = []
+    for row in selected:
+        if args.dry_run:
+            entry = standins.get(row["stand_in"])
+            reason = execute_mod.unavailable_reason(entry)
+            print(f"  would run {row['id']} -> {row['stand_in']}")
+            if reason:
+                print(f"    cannot run: {reason}")
+            results.append({"operation": row["id"], "status": "dry-run"})
+            continue
+
+        result = execute_mod.run(
+            row["stand_in"],
+            standins,
+            inputs=inputs,
+            workdir=out_root / row["id"],
+            operation=row["id"],
+            optional=row.get("optional"),
+            credentials=row.get("credentials"),
+        )
+        results.append({"operation": row["id"], **result.to_dict()})
+
+        mark = "ok" if result.ok else result.status
+        print(f"  {row['id']} -> {row['stand_in']}: {mark}")
+        if result.reason:
+            print(f"    {result.reason}")
+        for artifact in result.artifacts:
+            print(f"    wrote {out_root / row['id'] / artifact['path']}")
+        for note in result.notes:
+            print(f"    note: {note}")
+
+    if args.json_out:
+        dump_json(Path(args.json_out), {"kind": "r2s.run", "results": results})
+
+    if args.dry_run:
+        return 0
+
+    # Fail closed on required operations only. An optional operation that could not run
+    # is a reported gap, not a build failure -- the same distinction the router makes.
+    blocked = [
+        row["id"]
+        for row, result in zip(selected, results, strict=True)
+        if not row.get("optional") and result["status"] != execute_mod.STATUS_OK
+    ]
+    if blocked:
+        print(
+            f"\n{len(blocked)} required operation(s) did not execute: {', '.join(blocked)}",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
 def cmd_validate(args):
     vocab, standins, _ = _context()
     inventory = load_json(args.inventory)
@@ -312,6 +478,15 @@ def build_parser():
     p.add_argument("--sha", help="pin to a commit")
     p.add_argument("--subdir", help="package inside a monorepo")
     p.add_argument("--out", default="./r2s-out", help="output directory")
+    p.add_argument(
+        "--llm-proposals",
+        metavar="FILE",
+        help=(
+            "T4 gap-fill: a proposals JSON file to apply. Off unless given. Proposals "
+            "are applied as low-confidence, unconfirmed evidence and can never raise "
+            "confidence; see `r2s digest` for producing the input to hand a model."
+        ),
+    )
     p.set_defaults(func=cmd_extract)
 
     p = sub.add_parser("convert", help="route a reviewed inventory against a harness profile")
@@ -334,6 +509,31 @@ def build_parser():
     p = sub.add_parser("scan", help="scan an emitted skill for leaked credentials (L3)")
     p.add_argument("path", help="skill directory to scan")
     p.set_defaults(func=cmd_scan)
+
+    p = sub.add_parser("standins", help="list stand-ins and whether each can actually run")
+    p.set_defaults(func=cmd_standins)
+
+    p = sub.add_parser(
+        "digest", help="write the T4 digest to hand to your own model (r2s never calls one)"
+    )
+    p.add_argument("draft", help="an extracted draft inventory")
+    p.add_argument("--out", help="write the digest here instead of stdout")
+    p.set_defaults(func=cmd_digest)
+
+    p = sub.add_parser("run", help="execute the stand-in-backed operations of a report")
+    p.add_argument("report", help="a routed report (r2s convert --json-out)")
+    p.add_argument(
+        "--operation",
+        action="append",
+        help="operation id to run; repeatable",
+    )
+    p.add_argument("--all", action="store_true", help="run every stand-in-backed operation")
+    p.add_argument("--out", default="./r2s-run", help="output directory for artifacts")
+    p.add_argument("--inputs", help="JSON object of stand-in inputs, applied to every operation")
+    p.add_argument("--inputs-file", help="path to a JSON object of stand-in inputs")
+    p.add_argument("--dry-run", action="store_true", help="report what would run, run nothing")
+    p.add_argument("--json-out", help="write the per-operation results as JSON")
+    p.set_defaults(func=cmd_run)
 
     p = sub.add_parser("validate", help="validate an inventory against the schema and vocabulary")
     p.add_argument("inventory")

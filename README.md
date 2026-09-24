@@ -9,7 +9,7 @@ Convert any repository into a portable agent skill.
 
 Existing converters (`Skill_Seekers`, `repo2skill`) emit **knowledge** — documentation about what a repo is. `r2s` emits **capability**: for every operation the repo performs, a decision about how the target harness will actually perform it. That decision layer is the **capability map**, and it is the point of this project.
 
-**Status:** M0–M6 complete — extract, route and emit all work end to end. Extraction is Python-first. The MCP server is a spike, not production.
+**Status:** M0–M6 complete — extract, review, route, emit and run all work end to end. Extraction is Python-first (tracing is Python-only; declarations and the catalog are not). The MCP server executes stand-ins and reports honestly when it cannot.
 
 ## What it is
 
@@ -46,19 +46,26 @@ PYTHONPATH=src python -m r2s.cli <command>
 
 ```bash
 r2s profiles                          # list harness capability profiles
+r2s standins                          # list stand-ins; which can actually run here
 
 r2s extract ./some-repo               # profile + extract a draft inventory
 r2s extract --url https://github.com/owner/repo --sha <commit> --out ./out
 
 r2s convert out/inventory.json --profile bare       # route against one harness
 r2s convert out/inventory.json --all                # route against every profile
+r2s convert out/inventory.json --profile bare --emit ./skills   # write a skill package
+
+r2s run out/report.json --all --out ./artifacts     # execute the stand-in-backed steps
+r2s scan ./skills/<skill>             # L3 secret scan over an emitted skill
 
 r2s validate out/inventory.json       # schema + vocabulary check
 r2s diff a/inventory.json b/inventory.json          # compare across SHAs
 r2s catalog-lint ./some-repo          # dependencies missing from the catalog
+
+r2s digest out/inventory.draft.json   # T4: the summary to hand to your own model
 ```
 
-`extract` writes `inventory.draft.json` and `inventory.review.md`. Review the draft, edit it into `inventory.json`, then `convert`.
+`extract` writes `inventory.draft.json` and `inventory.review.md`. Review the draft, edit it into `inventory.json`, then `convert`. `convert --emit` writes the skill package; `run` then executes it.
 
 **The router consumes a reviewed inventory, never a draft.** `extract` is a first-class command rather than a hidden stage precisely so review stays a step you can take.
 
@@ -68,11 +75,11 @@ Five evidence sources that run concurrently and corroborate. They answer *differ
 
 | Source | Question | Signal |
 |---|---|---|
-| **T0** declared dialects | which operations, what order | CLI subcommands, routes, DAGs, CI jobs, tool registries |
+| **T0** declared dialects | which operations, what order | 20 dialects: CLI subcommands, web routes, DAGs, CI jobs, tool registries, IaC, Rust/Go/Java |
 | **T1** effect tracing | what each requires, effect class | calls to I/O boundaries, reached from an entrypoint |
-| **T2** provider catalog | which capabilities the repo uses at all | manifests matched against `catalog/providers.json` |
+| **T2** provider catalog | which capabilities the repo uses at all | manifests matched against `providers.json` — 37 providers, 6 ecosystems |
 | **T3** docs | gates, intent, optionality | README, docstrings, `--help` prose |
-| **T4** LLM proposal | gap-filling only | not implemented; must never be auto-accepted |
+| **T4** LLM proposal | gap-filling only | a file you produce from `r2s digest`; never auto-accepted, never raises confidence |
 
 **Honest limit:** T1 is high-fidelity for Python via stdlib `ast`. Other languages get T0/T2 quality plus regex heuristics. "Any repo" means any repo gets *an* inventory; call-graph fidelity is Python-first.
 
@@ -80,7 +87,7 @@ Three rules that matter more than coverage:
 
 1. **Unknown capability IDs hard-fail.** They are never silently treated as "missing" — that would hide a converter bug as a capability gap.
 2. **Stand-ins must come from the curated catalog.** Inline definitions are rejected. An invented stand-in is indistinguishable from fabrication.
-3. **Unknown dependencies never yield "requires nothing."** They become `external.call` at low confidence and a review flag. Silently assuming nothing is needed is the dangerous direction.
+3. **Unknown dependencies never yield "requires nothing."** They become `external.call` at **low** confidence with a note saying the requirement is a placeholder. Silently assuming nothing is needed is the dangerous direction, and so is dressing a placeholder up as a finding.
 
 ## The capability map
 
@@ -119,10 +126,10 @@ From the `agent-system` fixture:
 ├── SKILL.md                      pipeline; each step annotated with binding, gates, fidelity
 ├── references/
 │   ├── bindings.md               resolved binding table, with the evidence behind each requirement
-│   ├── degradation.md            what is degraded, which stand-in, declared fidelity
+│   ├── degradation.md            what is degraded, which stand-in, declared fidelity, and how to run it
 │   ├── blocked.md                ask-user questions with safe defaults
 │   └── gates.md                  fail-closed gates
-└── scripts/                      only the stand-in scripts actually needed
+└── scripts/                      the stand-in scripts this skill actually needs, and no others
 ```
 
 Conforms to `agentskills.io/specification`: `name` 1–64 chars kebab-case matching the folder, `description` 1–1024 chars, optional `license` / `compatibility` (≤500) / `metadata` (string→string) / `allowed-tools`. Body under 500 lines and ~5000 tokens; references one level deep. Validate with `skills-ref validate`, or with `r2s convert --emit` itself, which runs the spec check and the secret scan on what it just wrote.
@@ -131,7 +138,13 @@ Conforms to `agentskills.io/specification`: `name` 1–64 chars kebab-case match
 
 **The emitter refuses to emit from a draft inventory.** An unreviewed inventory has unconfirmed operations, and a skill built on those is confidently wrong rather than visibly incomplete. `--accept-unreviewed` overrides it and stamps the status into the skill, flagging every low-confidence operation inside.
 
-**No repository code is copied.** Stand-ins come from the curated catalog, so emitting a skill never redistributes someone else's source.
+**No repository code is copied.** The scripts in `scripts/` are r2s's own stand-ins, shipped under the same licence and copied verbatim — so emitting a skill never redistributes someone else's source, and the skill runs code that was reviewed here rather than code from the repo it describes. Each takes a JSON job on stdin and returns a JSON result:
+
+```bash
+echo '{"inputs": {"text": "..."}, "out_dir": "."}' | python scripts/srt_from_text.py
+```
+
+A stand-in with no executable form contributes no script, and `references/degradation.md` says which ones those are and why — an absent script is explained rather than mysterious.
 
 ## Eval
 
@@ -173,7 +186,7 @@ src/r2s/
   capability/    vocab, profiles, router, invariants, report   <- the novel component
   profiler/      manifests, entrypoints, classify, suitability
   extract/       pipeline, effects, catalog, docs, phases, confidence, coalesce, review
-                 gapfill (T4) and dialects/ (twelve declaration dialects)
+                 gapfill (T4) and dialects/ (twenty declaration dialects)
   emit/          SKILL.md and references/ rendering
   source/        snapshot, local
   validate/      schema, secrets (L3), spec (L4)
@@ -181,7 +194,8 @@ src/r2s/
                  (packaged; resolved via importlib.resources so an installed wheel works)
   cli.py
 eval/            the L1-L5 harness, runnable as `python -m eval`
-mcp/             the MCP synthesis spike (does not execute)
+execute/         runs a catalog stand-in: argv-only, timeboxed, fail-closed
+mcp/             the MCP server (executes stand-ins; reports when it cannot)
 docs/            PLAN.md, prior-art.md
 SKILL.md         the meta-skill that drives the CLI
 fixtures/        cli-tool/feed-sync, agent-system/youtube-automation
@@ -195,18 +209,42 @@ tests/
 python -m unittest discover -s tests
 ```
 
-143 tests, stdlib only. They cover the vocabulary contract, routing, all seven invariants, schema rejection cases, the effect-matcher false positives the fixture exposed, phase inference, the emitter contract, the secret scanner, the spec validator, and end-to-end extraction on a repo the system has never seen.
+251 tests, stdlib only. They cover the vocabulary contract, routing, all seven invariants, schema rejection cases, the effect-matcher false positives that the fixture exposed, phase inference, the emitter contract, the secret scanner, the spec validator, the stand-in executor (including every fail-closed path), the T4 proposals contract, and end-to-end extraction on repos the system has never seen.
 
-## Not built
+## What is built, and what is not
 
-Against the milestone plan in `docs/PLAN.md` §7 — **M0–M6 are done** (fixtures and schema, profiler, extraction, capability router, emitter and validators, frontends).
+Against the milestone plan in `docs/PLAN.md` §7 — **M0–M6 are done** (fixtures and
+schema, profiler, extraction, capability router, emitter and validators, frontends).
+`extract → review → route → emit → run` works end to end.
 
-Two things remain, and neither is a milestone:
+Three things are worth stating plainly, because each is a limit rather than a gap:
 
-- **MCP synthesis (PLAN's M5)** is a spike, not production. `mcp/server.py` is a real stdio JSON-RPC server that loads, answers `tools/list` and `tools/call`, and exposes one tool per stand-in-backed operation — but it does **not execute**, because a catalog stand-in is a curated description with declared fidelity, not a runnable script. `tools/call` returns the routing decision with `executed: false`. See `mcp/README.md`.
-- **Extraction breadth is incomplete.** Twelve dialects cover Python CLI, Python and JS web routes, OpenAPI, protobuf, GitHub Actions, Make, package scripts, docker-compose, systemd, cron, orchestrators, agent tool registries and infra. Not covered: Rust, Go and Java declaration sites, and T4 LLM gap-fill is a flag that is off by default.
+- **The MCP server executes, but only what a stand-in can honestly do.** `mcp/server.py`
+  is a stdio JSON-RPC server exposing one tool per stand-in-backed operation, and
+  `tools/call` runs the catalog stand-in and returns the artifacts it produced. Where a
+  stand-in cannot be run it says so and returns `executed: false` with the reason —
+  `reasoning-without-sources` is a model call, and `r2s` is stdlib-only and offline, so
+  there is no deterministic substitute and none is faked. See `mcp/README.md`.
+- **Extraction covers 20 dialects across 6 package ecosystems.** Python CLI, Python and
+  JS web routes, OpenAPI, protobuf, GitHub Actions, Make, package scripts,
+  docker-compose, systemd, cron, orchestrators, agent tool registries,
+  Terraform/Kubernetes/Ansible, and **Rust, Go and Java/Kotlin**. `providers.json` maps
+  37 providers across `pypi`, `npm`, `cargo`, `go`, `maven` and `gradle`.
+- **T4 (LLM gap-fill) is wired but off by default, and that is the design.** `r2s digest`
+  produces a structured summary; you hand it to whatever model you already have; `r2s
+  extract --llm-proposals` applies what comes back. `r2s` itself never calls a model,
+  which is what keeps it deterministic, offline and safe to run over an untrusted repo.
+  The contract around the proposals *is* validated — a proposal can never raise
+  confidence, weaken a requirement or remove a gate (see `tests/test_gapfill.py`). What
+  is not validated, and cannot be from here, is whether a given model produces good
+  proposals.
 
-Extraction is **Python-first**. Effect tracing uses stdlib `ast`; other languages get declaration and catalog coverage but weaker call-graph fidelity, so requirement attribution on them is correspondingly weaker.
+Extraction is **Python-first**. Effect tracing uses stdlib `ast`, so it is Python-only:
+other languages get declaration and catalog coverage but weaker call-graph fidelity, and
+requirement attribution on them is correspondingly weaker. That is why every requirement
+carries a confidence level, and why an operation whose requirement could not be
+determined says `external.call` at **low** confidence with a note explaining that the
+requirement is a placeholder — never a guess presented as a finding.
 
 ## Contributing
 

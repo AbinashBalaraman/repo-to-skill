@@ -122,10 +122,33 @@ A few properties of the report are the whole point, and you should surface them:
 r2s validate r2s-out/inventory.json                  # schema + vocabulary check
 r2s diff a/inventory.json b/inventory.json           # what changed across two SHAs
 r2s catalog-lint ./path/to/repo                      # dependencies missing from the catalog
+r2s standins                                         # which stand-ins can actually run here
+r2s digest r2s-out/inventory.draft.json              # T4 input, to hand to your own model
 ```
 
 Use `validate` before `convert` when an inventory has been edited by hand — it catches
 schema and vocabulary mistakes with a clearer message than the router would.
+
+## Emitting and running
+
+Emission and execution are the two steps that turn a report into work done.
+
+```bash
+r2s convert r2s-out/inventory.json --profile bare --emit ./skills
+r2s run r2s-out/report.json --all --out ./artifacts
+r2s run r2s-out/report.json --operation gen-captions --inputs '{"text": "..."}' --out ./artifacts
+```
+
+- **`--emit` writes the skill package** (`SKILL.md`, `references/`, and only the
+  `scripts/` it needs). The scripts are r2s's own stand-ins, not the repo's code.
+- **`r2s run` executes a stand-in.** Check `r2s standins` first: a stand-in whose declared
+  tool is missing cannot run, and `run` will say so rather than producing anything.
+  `--dry-run` shows what would run without running it.
+- **`r2s run` exits 1 when a required operation did not execute.** That is a real gap to
+  report, not noise to filter. An optional operation failing does not fail the command.
+
+Where a stand-in cannot run, the honest answer is `ask-user`: the step needs a human.
+Never describe a step as done because a stand-in existed for it.
 
 ## What does not exist yet
 
@@ -139,11 +162,14 @@ Be honest with the user about the current state:
 - **Extraction is Python-first.** Non-Python repos get declaration and catalog coverage
   but weaker call-graph fidelity, so requirement attribution on them is weaker. Say so
   rather than presenting the inventory as equally reliable.
-- **T4 (LLM gap-filling) is off by default and unproven.** If it is ever enabled, its
-  proposals must never be auto-accepted.
-- **MCP synthesis is a spike, not a feature.** The generated server loads and answers
-  `tools/list` and `tools/call`, but it does not execute — it returns the routing
-  decision. Do not promise a working MCP server.
+- **T4 (LLM gap-filling) is wired but off by default.** It is a handoff, not a feature:
+  `r2s digest` produces the input, the user's model produces proposals, `r2s extract
+  --llm-proposals` applies them. Proposals are applied at low confidence, can never raise
+  confidence, and can never weaken a requirement or a gate — but whether a given model
+  writes good proposals is not something r2s can validate, so never present an applied
+  proposal as confirmed.
+- **MCP is a server, not a generator.** `mcp/server.py` executes stand-ins and reports
+  when it cannot; it is not emitted per repo, so do not promise a generated server.
 
 ## Limits
 
