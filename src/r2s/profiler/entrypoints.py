@@ -9,10 +9,7 @@ import json
 import re
 from pathlib import Path
 
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover
-    tomllib = None
+from ..util import toml as toml_util
 
 # Conventional names that behave as entrypoints even without a declaration.
 CONVENTIONAL_NAMES = {
@@ -44,15 +41,23 @@ class Entrypoint:
         return f"<Entrypoint {self.kind} {self.loc}>"
 
 
-def _python_console_scripts(snapshot):
+def _python_console_scripts(snapshot, failures=None):
     out = []
+    failures = failures if failures is not None else []
     for rel in snapshot.find("pyproject.toml"):
         text = snapshot.read(rel)
-        if not text or tomllib is None:
+        if not text:
             continue
         try:
-            data = tomllib.loads(text)
-        except Exception:
+            data = toml_util.loads(text)
+        except toml_util.TomlUnavailable as exc:
+            failures.append(f"{rel}: {exc}")
+            continue
+        except Exception as exc:
+            failures.append(
+                f"{rel}: could not be parsed ({exc}); console scripts are "
+                f"missing from this inventory"
+            )
             continue
         scripts = (data.get("project", {}) or {}).get("scripts", {}) or {}
         for name, target in scripts.items():
@@ -73,15 +78,20 @@ def _module_to_path(target):
     return f"{module}.py"
 
 
-def _node_bins(snapshot):
+def _node_bins(snapshot, failures=None):
     out = []
+    failures = failures if failures is not None else []
     for rel in snapshot.find("package.json"):
         text = snapshot.read(rel)
         if not text:
             continue
         try:
             data = json.loads(text)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            failures.append(
+                f"{rel}: could not be parsed ({exc}); its bin and script entrypoints "
+                f"are missing from this inventory"
+            )
             continue
         for name, target in (data.get("bin") or {}).items():
             out.append(Entrypoint("cli", str(target), name=name, source="declared"))
@@ -117,11 +127,11 @@ def _conventional(snapshot):
     return out
 
 
-def discover(snapshot):
+def discover(snapshot, failures=None):
     """All entrypoints, deduplicated by (kind, loc), deterministic order."""
     found = []
-    found += _python_console_scripts(snapshot)
-    found += _node_bins(snapshot)
+    found += _python_console_scripts(snapshot, failures)
+    found += _node_bins(snapshot, failures)
     found += _make_targets(snapshot)
     found += _conventional(snapshot)
 

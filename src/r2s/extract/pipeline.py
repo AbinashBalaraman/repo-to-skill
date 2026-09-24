@@ -33,6 +33,10 @@ def extract(snapshot, profile_result, vocab, providers, effects_catalog, standin
     warnings = []
     source = source or {}
 
+    # A manifest that could not be read changes the repo class and the dependency
+    # surface, so it is reported rather than swallowed.
+    warnings.extend(profile_result.parse_failures)
+
     # ---- T0: declared operations
     candidates, dialects_ran = dialect_registry.run(snapshot, profile_result)
 

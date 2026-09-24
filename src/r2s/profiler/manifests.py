@@ -8,10 +8,7 @@ import json
 import re
 from pathlib import Path
 
-try:  # stdlib from 3.11
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover
-    tomllib = None
+from ..util import toml as toml_util
 
 MANIFEST_NAMES = (
     "pyproject.toml",
@@ -63,8 +60,9 @@ def _strip_requirement(line):
     return match.group(1).lower().replace("_", "-") if match else None
 
 
-def read_python_deps(snapshot):
+def read_python_deps(snapshot, failures=None):
     deps = set()
+    failures = failures if failures is not None else []
 
     for rel in snapshot.find("requirements.txt"):
         text = snapshot.read(rel)
@@ -76,11 +74,18 @@ def read_python_deps(snapshot):
 
     for rel in snapshot.find("pyproject.toml"):
         text = snapshot.read(rel)
-        if not text or tomllib is None:
+        if not text:
             continue
         try:
-            data = tomllib.loads(text)
-        except Exception:
+            data = toml_util.loads(text)
+        except toml_util.TomlUnavailable as exc:
+            failures.append(f"{rel}: {exc}")
+            continue
+        except Exception as exc:
+            failures.append(
+                f"{rel}: could not be parsed ({exc}); its dependencies "
+                f"and console scripts are missing from this inventory"
+            )
             continue
         project = data.get("project", {})
         for entry in project.get("dependencies", []) or []:
@@ -115,15 +120,20 @@ def read_python_deps(snapshot):
     return deps
 
 
-def read_node_deps(snapshot):
+def read_node_deps(snapshot, failures=None):
     deps = set()
+    failures = failures if failures is not None else []
     for rel in snapshot.find("package.json"):
         text = snapshot.read(rel)
         if not text:
             continue
         try:
             data = json.loads(text)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            failures.append(
+                f"{rel}: could not be parsed ({exc}); its dependencies are missing "
+                f"from this inventory"
+            )
             continue
         for key in ("dependencies", "devDependencies", "peerDependencies"):
             deps.update((data.get(key) or {}).keys())
@@ -131,7 +141,13 @@ def read_node_deps(snapshot):
 
 
 def detect(snapshot):
-    """Return a profile of the repo: languages, ecosystems, dependencies, marker files."""
+    """Return a profile of the repo: languages, ecosystems, dependencies, marker files.
+
+    `parse_failures` lists manifests that could not be read. They are surfaced rather
+    than swallowed: a pyproject.toml that fails to parse takes every console script and
+    every declared dependency with it, which silently changes the repo class and the
+    inventory.
+    """
     found = {}
     for rel in snapshot.files:
         name = Path(rel).name
@@ -140,11 +156,12 @@ def detect(snapshot):
 
     languages = sorted({LANGUAGE_MARKERS[n] for n in found if n in LANGUAGE_MARKERS})
 
+    parse_failures = []
     ecosystems = {}
-    py = read_python_deps(snapshot)
+    py = read_python_deps(snapshot, parse_failures)
     if py:
         ecosystems["pypi"] = py
-    node = read_node_deps(snapshot)
+    node = read_node_deps(snapshot, parse_failures)
     if node:
         ecosystems["npm"] = node
 
@@ -152,6 +169,7 @@ def detect(snapshot):
         "languages": languages,
         "manifests": dict(sorted(found.items())),
         "ecosystems": ecosystems,
+        "parse_failures": parse_failures,
         "has_docker": bool(
             found.get("Dockerfile") or found.get("docker-compose.yml") or found.get("compose.yml")
         ),

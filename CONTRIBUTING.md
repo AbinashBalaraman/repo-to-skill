@@ -5,7 +5,7 @@ you time.
 
 ## Setup
 
-No runtime dependencies. Python 3.10+.
+Zero runtime dependencies on Python 3.11+. On 3.10 the `tomli` backport is pulled in, because `tomllib` is stdlib only from 3.11.
 
 ```bash
 git clone https://github.com/AbinashBalaraman/repo-to-skill

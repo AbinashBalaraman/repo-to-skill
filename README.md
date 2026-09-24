@@ -3,7 +3,7 @@
 [![CI](https://github.com/AbinashBalaraman/repo-to-skill/actions/workflows/ci.yml/badge.svg)](https://github.com/AbinashBalaraman/repo-to-skill/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](pyproject.toml)
+[![Dependencies](https://img.shields.io/badge/dependencies-0%20on%20py3.11%2B-brightgreen.svg)](pyproject.toml)
 
 Convert any repository into a portable agent skill.
 
@@ -26,7 +26,7 @@ It is not a skill itself. A skill can *describe* a capability; it cannot *determ
 
 ## Install
 
-No runtime dependencies. Python 3.10+.
+Zero runtime dependencies on Python 3.11+. On 3.10 the `tomli` backport is pulled in, because `tomllib` is stdlib only from 3.11.
 
 ```bash
 pip install -e .

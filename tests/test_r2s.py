@@ -990,5 +990,118 @@ class TestYoutubeFixture(unittest.TestCase):
                 self.assertNotEqual(row["binding"], "drop", row["id"])
 
 
+class TestModuleInvocation(unittest.TestCase):
+    """CI and the README both use `python -m r2s`, which needs a __main__.py. Without
+    one the module invocation fails while the console script still works, so the gap is
+    invisible locally."""
+
+    def test_main_module_exists(self):
+        self.assertTrue((PROJECT / "src" / "r2s" / "__main__.py").is_file())
+
+    def test_python_dash_m_runs(self):
+        import os
+        import subprocess
+
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(PROJECT / "src")
+        result = subprocess.run(
+            [sys.executable, "-m", "r2s", "--version"],
+            capture_output=True,
+            text=True,
+            cwd=str(PROJECT),
+            env=env,
+            timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("r2s", result.stdout)
+
+    def test_python_dash_m_lists_profiles(self):
+        import os
+        import subprocess
+
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(PROJECT / "src")
+        result = subprocess.run(
+            [sys.executable, "-m", "r2s", "profiles"],
+            capture_output=True,
+            text=True,
+            cwd=str(PROJECT),
+            env=env,
+            timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("bare", result.stdout)
+
+
+class TestManifestFailuresAreLoud(unittest.TestCase):
+    """A pyproject.toml that cannot be read takes every console script and declared
+    dependency with it, silently changing the repo class and the inventory. It must be
+    reported, never swallowed.
+
+    This is not hypothetical: on Python 3.10 `tomllib` does not exist, and the original
+    code quietly skipped the file, so `feed-sync` was misclassified as a library and a
+    dependency went missing.
+    """
+
+    def test_unavailable_toml_parser_is_reported(self):
+        from r2s.profiler import manifests as manifests_mod
+        from r2s.util import toml as toml_util
+
+        snapshot = build_snapshot(FIXTURE)
+        original = toml_util._toml
+        try:
+            toml_util._toml = None
+            failures = []
+            deps = manifests_mod.read_python_deps(snapshot, failures)
+        finally:
+            toml_util._toml = original
+
+        self.assertTrue(failures, "an unreadable pyproject.toml must be reported")
+        self.assertTrue(any("tomli" in f or "TOML" in f for f in failures), failures)
+        self.assertNotIn("requests", deps, "deps cannot be read without a TOML parser")
+
+    def test_unavailable_toml_parser_reaches_the_inventory_warnings(self):
+        from r2s.profiler import manifests as manifests_mod
+        from r2s.profiler import profile as profile_repo
+        from r2s.util import toml as toml_util
+
+        snapshot = build_snapshot(FIXTURE)
+        original = toml_util._toml
+        try:
+            toml_util._toml = None
+            failures = []
+            manifests_mod.read_python_deps(snapshot, failures)
+            result = profile_repo(snapshot)
+        finally:
+            toml_util._toml = original
+
+        self.assertTrue(failures)
+        # The profiler threads its own failures through, so the pipeline can warn.
+        self.assertIsInstance(result.parse_failures, list)
+
+    def test_malformed_pyproject_is_reported(self):
+        import tempfile
+
+        from r2s.profiler import manifests as manifests_mod
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pyproject.toml").write_text("this is not = valid toml [[[", encoding="utf-8")
+            snapshot = build_snapshot(root)
+            failures = []
+            manifests_mod.read_python_deps(snapshot, failures)
+
+        self.assertTrue(failures, "a malformed pyproject.toml must be reported")
+
+    def test_healthy_pyproject_reports_nothing(self):
+        from r2s.profiler import manifests as manifests_mod
+
+        snapshot = build_snapshot(FIXTURE)
+        failures = []
+        deps = manifests_mod.read_python_deps(snapshot, failures)
+        self.assertEqual(failures, [])
+        self.assertIn("requests", deps)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -7,12 +7,21 @@ from . import suitability as _suitability
 
 
 class ProfileResult:
-    def __init__(self, manifests, entrypoints, repo_class, class_confidence, class_evidence):
+    def __init__(
+        self,
+        manifests,
+        entrypoints,
+        repo_class,
+        class_confidence,
+        class_evidence,
+        parse_failures=None,
+    ):
         self.manifests = manifests
         self.entrypoints = entrypoints
         self.repo_class = repo_class
         self.class_confidence = class_confidence
         self.class_evidence = class_evidence
+        self.parse_failures = list(parse_failures or [])
 
     @property
     def dependencies(self):
@@ -38,10 +47,16 @@ class ProfileResult:
 
 
 def profile(snapshot):
+    failures = []
     manifests = _manifests.detect(snapshot)
-    entrypoints = _entrypoints.discover(snapshot)
+    # `detect` collects its own failures; entrypoint discovery reports into the same
+    # list so a manifest that fails to parse is reported once, not twice.
+    failures.extend(manifests.get("parse_failures", []))
+    entrypoints = _entrypoints.discover(snapshot, failures)
     repo_class, confidence, evidence = _classify.classify(snapshot, manifests, entrypoints)
-    return ProfileResult(manifests, entrypoints, repo_class, confidence, evidence)
+    return ProfileResult(
+        manifests, entrypoints, repo_class, confidence, evidence, parse_failures=failures
+    )
 
 
 def assess_suitability(snapshot, result, operations):
